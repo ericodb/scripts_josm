@@ -8,7 +8,7 @@ const UIManager      = Java.type("javax.swing.UIManager");
 const JScrollPane    = Java.type("javax.swing.JScrollPane");
 const JLabel         = Java.type("javax.swing.JLabel");
 const BoxLayout      = Java.type("javax.swing.BoxLayout");
-const JSlider        = Java.type("javax.swing.JSlider");
+const JProgressBar   = Java.type("javax.swing.JProgressBar");
 const JRadioButton         = Java.type("javax.swing.JRadioButton");
 const ButtonGroup          = Java.type("javax.swing.ButtonGroup");
 const JSpinner             = Java.type("javax.swing.JSpinner");
@@ -153,8 +153,9 @@ function adicionarCamadaNotas(notas, nome) {
 // O resultado é JSON com campo "boundingbox": [minlat, maxlat, minlon, maxlon]
 
 function urlNominatim(lugar, featuretype) {
+    const lugClean = String(lugar).trim().replace(/\s+/g, " ");
     let url = "https://nominatim.openstreetmap.org/search?q=" +
-              URLEncoder.encode(lugar, "UTF-8") +
+              URLEncoder.encode(lugClean, "UTF-8").replace(/\+/g, "%20") +
               "&format=json&limit=5&accept-language=pt&polygon_geojson=1";
     if (featuretype) url += "&featuretype=" + featuretype;
     return url;
@@ -335,8 +336,9 @@ function montarUrlBbox(minLon, minLat, maxLon, maxLat, onlyOpen, diasFechadas) {
 
 
 function urlBuscaGlobalPalavra(palavra) {
+    const palClean = String(palavra).trim().replace(/\s+/g, " ");
     return "https://api.openstreetmap.org/api/0.6/notes/search?q=" +
-           URLEncoder.encode(palavra, "UTF-8") + "&limit=1000";
+           URLEncoder.encode(palClean, "UTF-8").replace(/\+/g, "%20") + "&limit=1000";
 }
 
 function urlNotaPorId(noteId) {
@@ -345,8 +347,9 @@ function urlNotaPorId(noteId) {
 
 function urlBuscaUsuario(usuario, onlyOpen, diasFechadas) {
     const closed = onlyOpen ? 0 : (diasFechadas !== undefined ? diasFechadas : -1);
+    const userClean = String(usuario).trim().replace(/\s+/g, " ");
     let url = "https://api.openstreetmap.org/api/0.6/notes/search?display_name=" +
-              URLEncoder.encode(usuario, "UTF-8") + "&limit=10000";
+              URLEncoder.encode(userClean, "UTF-8").replace(/\+/g, "%20") + "&limit=10000";
     url += "&closed=" + closed;
     return url;
 }
@@ -460,9 +463,9 @@ NotasFinder.prototype._setupUi = function () {
     // ── Painel de Progresso Embedded ─────────────────────────
     this.labelStatus = new JLabel("Aguardando busca...");
 
-    this.sliderProgresso = new JSlider(0, 100, 0);
-    this.sliderProgresso.setPreferredSize(new Dimension(450, 30));
-    this.sliderProgresso.setEnabled(false);
+    this.barraProgresso = new JProgressBar(0, 100);
+    this.barraProgresso.setStringPainted(true);
+    this.barraProgresso.setPreferredSize(new Dimension(450, 22));
 
     this.btnCancelarBusca = new JButton("Cancelar Busca", UIManager.getIcon("OptionPane.cancelIcon"));
     this.btnCancelarBusca.setEnabled(false);
@@ -475,7 +478,7 @@ NotasFinder.prototype._setupUi = function () {
     this.painelProgresso.setLayout(new BoxLayout(this.painelProgresso, BoxLayout.Y_AXIS));
     this.painelProgresso.setBorder(BorderFactory.createTitledBorder("Progresso da Busca"));
     this.painelProgresso.add(painelProgHeader);
-    this.painelProgresso.add(this.sliderProgresso);
+    this.painelProgresso.add(this.barraProgresso);
 
     // ── Painel principal ──────────────────────────────────────
     this.panel = new JPanel();
@@ -769,7 +772,7 @@ NotasFinder.prototype.run = function () {
 
 NotasFinder.prototype._iniciarBusca = function () {
     const tipoFiltro = String(this.comboTipo.getSelectedItem());
-    const valorRaw   = String(this.fieldValor.getText()).trim();
+    const valorRaw   = String(this.fieldValor.getText()).trim().replace(/\s+/g, " ");
     const onlyOpen   = this.radioAbertas.isSelected();
     const diasFechadas = onlyOpen ? 0 : Number(this.spinnerDias.getValue());
     const valorNorm  = (tipoFiltro !== "ID" && valorRaw) ?
@@ -845,9 +848,10 @@ NotasFinder.prototype._iniciarBusca = function () {
 // ── Motor central: Timer + HttpClient.sendAsync ───────────────
 
 NotasFinder.prototype._buscaUsuarioPaginado = function(usuario, bbox, aneis, onlyOpen, diasFechadas) {
-    const url = urlBuscaUsuario(usuario, onlyOpen, diasFechadas);
-    const valorNorm = removeAcentos(String(usuario).toLowerCase());
-    this._buscaComTimer([url], null, "Usuário", valorNorm, "Usuário: " + usuario, bbox, aneis);
+    const userClean = String(usuario).trim().replace(/\s+/g, " ");
+    const url = urlBuscaUsuario(userClean, onlyOpen, diasFechadas);
+    const valorNorm = removeAcentos(userClean.toLowerCase());
+    this._buscaComTimer([url], null, "Usuário", valorNorm, "Usuário: " + userClean, bbox, aneis);
 };
 
 const NUM_WORKERS = 4; // máximo de downloads simultâneos
@@ -858,10 +862,10 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
     let cancelado = false;
 
     // Configura UI do painel de progresso embedded
-    this.sliderProgresso.setMinimum(0);
-    this.sliderProgresso.setMaximum(total);
-    this.sliderProgresso.setValue(0);
-    this.sliderProgresso.setEnabled(true);
+    this.barraProgresso.setMinimum(0);
+    this.barraProgresso.setMaximum(total);
+    this.barraProgresso.setValue(0);
+    this.barraProgresso.setString("0 de " + total);
     this.labelStatus.setText("Preparando " + total + " requisições...");
     this.btnCancelarBusca.setEnabled(true);
     if (this.btnOk) this.btnOk.setEnabled(false);
@@ -879,7 +883,6 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
     this.btnCancelarBusca.addActionListener(listenerCancel);
 
     function finalizarBuscaUI() {
-        self.sliderProgresso.setEnabled(false);
         self.btnCancelarBusca.setEnabled(false);
         if (self.btnOk) self.btnOk.setEnabled(true);
     }
@@ -946,7 +949,8 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
             // Future concluído
             futures[i] = null;
             concluidos++;
-            self.sliderProgresso.setValue(concluidos);
+            self.barraProgresso.setValue(concluidos);
+            self.barraProgresso.setString(concluidos + " de " + total);
 
             try {
                 const response = f.get();
@@ -972,19 +976,23 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
 
                     let adiciona = false;
                     const comments = note.getComments().toArray();
-                    for (let c = 0; c < comments.length; c++) {
-                        if (tipoFiltro === "Palavra-chave") {
-                            const txt = removeAcentos(
-                                String(comments[c].getText() || "").toLowerCase());
-                            if (txt.indexOf(valorNorm) !== -1) { adiciona = true; break; }
-                        } else if (tipoFiltro === "Usuário") {
-                            const uobj  = comments[c].getUser();
-                            const uname = uobj ?
-                                removeAcentos(String(uobj.getName()).toLowerCase()) : "";
-                            // Busca parcial — "tarta" encontra "tartaruga"
-                            if (valorNorm && uname.indexOf(
-                                    removeAcentos(String(valorNorm).toLowerCase())) !== -1) {
-                                adiciona = true; break;
+                    if (tipoFiltro === "Usuário" && !bboxFiltro) {
+                        // Busca global por usuário: a API já filtra pelo display_name
+                        adiciona = true;
+                    } else {
+                        for (let c = 0; c < comments.length; c++) {
+                            if (tipoFiltro === "Palavra-chave") {
+                                const txt = removeAcentos(
+                                    String(comments[c].getText() || "").toLowerCase());
+                                if (txt.indexOf(valorNorm) !== -1) { adiciona = true; break; }
+                            } else if (tipoFiltro === "Usuário") {
+                                const uobj  = comments[c].getUser();
+                                const uname = uobj ?
+                                    removeAcentos(String(uobj.getName()).trim().replace(/\s+/g, " ").toLowerCase()) : "";
+                                // Busca parcial — ex: "Mateusz Konieczny" ou "tarta"
+                                if (valorNorm && uname.indexOf(valorNorm) !== -1) {
+                                    adiciona = true; break;
+                                }
                             }
                         }
                     }

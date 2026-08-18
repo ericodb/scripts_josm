@@ -1,7 +1,6 @@
 "use strict"; 
  
 import { println } from 'josm/scriptingconsole'; 
-import { addResetCallback } from 'josm/context'; 
  
 const MainApplication = Java.type("org.openstreetmap.josm.gui.MainApplication"); 
 const Notification    = Java.type("org.openstreetmap.josm.gui.Notification"); 
@@ -541,13 +540,6 @@ function iniciarScript() {
         if (ds) ds.addChangeSetTag("revert:id", null); 
         dialog.dispose(); 
     }}))()); 
- 
-    addResetCallback(function() { 
-        try { monitorTimer.stop(); } catch(e) {} 
-        try { ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener); } catch(e) {} 
-        try { MainApplication.getLayerManager().removeLayerChangeListener(layerHandler); } catch(e) {} 
-        dialog.dispose(); 
-    }); 
  
     updateUI(); 
     dialog.pack(); 

@@ -1,6 +1,6 @@
 "use strict";
 
-// ── Imports Java ─────────────────────────────────────────────
+// Imports Java
 const JDialog        = Java.type("javax.swing.JDialog");
 const JPanel         = Java.type("javax.swing.JPanel");
 const JButton        = Java.type("javax.swing.JButton");
@@ -111,14 +111,14 @@ function parsearBytes(bytes) {
     finally { try { stream.close(); } catch (e) {} }
 }
 
-// ── Normalização ──────────────────────────────────────────────
+// Normalização
 
 function removeAcentos(txt) {
     return Normalizer.normalize(txt, NormalizerForm.NFD)
                      .replace(/[\u0300-\u036f]/g, "");
 }
 
-// ── Utilitários ───────────────────────────────────────────────
+// Utilitários
 
 function validarId(v) {
     if (!v || v.trim() === "") {
@@ -148,7 +148,7 @@ function adicionarCamadaNotas(notas, nome) {
     lm.addLayer(camada);
 }
 
-// ── Nominatim ────────────────────────────────────────────────
+// Nominatim
 // Retorna CompletableFuture<HttpResponse<byte[]>> para uma busca Nominatim.
 // O resultado é JSON com campo "boundingbox": [minlat, maxlat, minlon, maxlon]
 
@@ -276,7 +276,7 @@ function blocoNoPoli(bl, aneis) {
     return false;
 }
 
-// ── Helpers de URL ────────────────────────────────────────────
+// Helpers de URL
 
 function gerarBlocos(minLon, minLat, maxLon, maxLat) {
     const blocos = [];
@@ -354,7 +354,7 @@ function urlBuscaUsuario(usuario, onlyOpen, diasFechadas) {
     return url;
 }
 
-// ── Classe principal ──────────────────────────────────────────
+// Classe principal
 
 function NotasFinder() {
     this._setupUi();
@@ -362,7 +362,7 @@ function NotasFinder() {
 }
 
 NotasFinder.prototype._setupUi = function () {
-    // ── Campo de busca Nominatim ──────────────────────────────
+    // Campo de busca Nominatim
     this.fieldLugar  = new JTextField(25);
     this.fieldLugar.setToolTipText("Ex: São Paulo, Minas Gerais, Brasil...");
     this.btnBuscarLugar = new JButton("Buscar");
@@ -378,7 +378,7 @@ NotasFinder.prototype._setupUi = function () {
     const painelBbox = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
     painelBbox.add(this.labelBbox);
 
-    // ── Filtros ───────────────────────────────────────────────
+    // Filtros
     const GridBagLayout      = Java.type("java.awt.GridBagLayout");
     const GridBagConstraints = Java.type("java.awt.GridBagConstraints");
     const Insets             = Java.type("java.awt.Insets");
@@ -390,12 +390,12 @@ NotasFinder.prototype._setupUi = function () {
     this.labelDica = new JLabel("");
     this.labelDica.setVerticalAlignment(Java.type("javax.swing.SwingConstants").TOP);
 
-    // ── Mapa ──────────────────────────────────────────────────
+    // Mapa
     this.miniMapa = new JMapViewer();
     this.miniMapa.setPreferredSize(new Dimension(460, 240));
     this.miniMapa.setZoom(1);
 
-    // ── Radios ────────────────────────────────────────────────
+    // Radios
     this.radioAbertas         = new JRadioButton("Apenas abertas", true);
     this.radioAbertasFechadas = new JRadioButton("Abertas e fechadas", false);
     const grp = new ButtonGroup();
@@ -460,7 +460,7 @@ NotasFinder.prototype._setupUi = function () {
     gbc.fill = GridBagConstraints.BOTH;
     painelFiltros.add(this.labelDica, gbc);
 
-    // ── Painel de Progresso Embedded ─────────────────────────
+    // Painel de Progresso Embedded
     this.labelStatus = new JLabel("Aguardando busca...");
 
     this.barraProgresso = new JProgressBar(0, 100);
@@ -480,7 +480,7 @@ NotasFinder.prototype._setupUi = function () {
     this.painelProgresso.add(painelProgHeader);
     this.painelProgresso.add(this.barraProgresso);
 
-    // ── Painel principal ──────────────────────────────────────
+    // Painel principal
     this.panel = new JPanel();
     this.panel.setLayout(new BoxLayout(this.panel, BoxLayout.Y_AXIS));
     this.panel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
@@ -740,7 +740,7 @@ NotasFinder.prototype._atualizarMapa = function (bbox, aneis) {
         this.miniMapa.setCenter(cp || new Point(210, 160));
     }
 };
-// ── Fluxo principal ───────────────────────────────────────────
+// Fluxo principal
 
 NotasFinder.prototype.run = function () {
     const self = this;
@@ -845,7 +845,7 @@ NotasFinder.prototype._iniciarBusca = function () {
         tipoFiltro, valorNorm, null);
 };
 
-// ── Motor central: Timer + HttpClient.sendAsync ───────────────
+// Motor central: Timer + HttpClient.sendAsync
 
 NotasFinder.prototype._buscaUsuarioPaginado = function(usuario, bbox, aneis, onlyOpen, diasFechadas) {
     const userClean = String(usuario).trim().replace(/\s+/g, " ");
@@ -1046,5 +1046,5 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
     timer.start();
 };
 
-// ── Ponto de entrada ──────────────────────────────────────────
+// Ponto de entrada
 new NotasFinder().run();

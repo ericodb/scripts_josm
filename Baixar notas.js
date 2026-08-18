@@ -1,6 +1,6 @@
 "use strict";
 
-// ── Imports Java ─────────────────────────────────────────────
+// Imports Java
 const JDialog        = Java.type("javax.swing.JDialog");
 const JPanel         = Java.type("javax.swing.JPanel");
 const JButton        = Java.type("javax.swing.JButton");
@@ -111,14 +111,14 @@ function parsearBytes(bytes) {
     finally { try { stream.close(); } catch (e) {} }
 }
 
-// ── Normalização ──────────────────────────────────────────────
+// Normalização
 
 function removeAcentos(txt) {
     return Normalizer.normalize(txt, NormalizerForm.NFD)
                      .replace(/[\u0300-\u036f]/g, "");
 }
 
-// ── Utilitários ───────────────────────────────────────────────
+// Utilitários
 
 function validarId(v) {
     if (!v || v.trim() === "") {
@@ -148,13 +148,14 @@ function adicionarCamadaNotas(notas, nome) {
     lm.addLayer(camada);
 }
 
-// ── Nominatim ────────────────────────────────────────────────
+// Nominatim
 // Retorna CompletableFuture<HttpResponse<byte[]>> para uma busca Nominatim.
 // O resultado é JSON com campo "boundingbox": [minlat, maxlat, minlon, maxlon]
 
 function urlNominatim(lugar, featuretype) {
+    const lugClean = String(lugar).trim().replace(/\s+/g, " ");
     let url = "https://nominatim.openstreetmap.org/search?q=" +
-              URLEncoder.encode(lugar, "UTF-8") +
+              URLEncoder.encode(lugClean, "UTF-8").replace(/\+/g, "%20") +
               "&format=json&limit=5&accept-language=pt&polygon_geojson=1";
     if (featuretype) url += "&featuretype=" + featuretype;
     return url;
@@ -275,7 +276,7 @@ function blocoNoPoli(bl, aneis) {
     return false;
 }
 
-// ── Helpers de URL ────────────────────────────────────────────
+// Helpers de URL
 
 function gerarBlocos(minLon, minLat, maxLon, maxLat) {
     const blocos = [];
@@ -335,8 +336,9 @@ function montarUrlBbox(minLon, minLat, maxLon, maxLat, onlyOpen, diasFechadas) {
 
 
 function urlBuscaGlobalPalavra(palavra) {
+    const palClean = String(palavra).trim().replace(/\s+/g, " ");
     return "https://api.openstreetmap.org/api/0.6/notes/search?q=" +
-           URLEncoder.encode(palavra, "UTF-8") + "&limit=1000";
+           URLEncoder.encode(palClean, "UTF-8").replace(/\+/g, "%20") + "&limit=1000";
 }
 
 function urlNotaPorId(noteId) {
@@ -345,13 +347,14 @@ function urlNotaPorId(noteId) {
 
 function urlBuscaUsuario(usuario, onlyOpen, diasFechadas) {
     const closed = onlyOpen ? 0 : (diasFechadas !== undefined ? diasFechadas : -1);
+    const userClean = String(usuario).trim().replace(/\s+/g, " ");
     let url = "https://api.openstreetmap.org/api/0.6/notes/search?display_name=" +
-              URLEncoder.encode(usuario, "UTF-8") + "&limit=10000";
+              URLEncoder.encode(userClean, "UTF-8").replace(/\+/g, "%20") + "&limit=10000";
     url += "&closed=" + closed;
     return url;
 }
 
-// ── Classe principal ──────────────────────────────────────────
+// Classe principal
 
 function NotasFinder() {
     this._setupUi();
@@ -359,8 +362,8 @@ function NotasFinder() {
 }
 
 NotasFinder.prototype._setupUi = function () {
-    // ── Campo de busca Nominatim ──────────────────────────────
-    this.fieldLugar  = new JTextField(22);
+    // Campo de busca Nominatim
+    this.fieldLugar  = new JTextField(25);
     this.fieldLugar.setToolTipText("Ex: São Paulo, Minas Gerais, Brasil...");
     this.btnBuscarLugar = new JButton("Buscar");
 
@@ -375,24 +378,24 @@ NotasFinder.prototype._setupUi = function () {
     const painelBbox = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
     painelBbox.add(this.labelBbox);
 
-    // ── Filtros ───────────────────────────────────────────────
+    // Filtros
     const GridBagLayout      = Java.type("java.awt.GridBagLayout");
     const GridBagConstraints = Java.type("java.awt.GridBagConstraints");
     const Insets             = Java.type("java.awt.Insets");
 
     this.comboTipo  = new JComboBox(["Palavra-chave", "Usuário", "ID"]);
-    this.fieldValor = new JTextField(14);
+    this.fieldValor = new JTextField(16);
 
     // Dica contextual HTML — atualizada pelo listener do combo
     this.labelDica = new JLabel("");
     this.labelDica.setVerticalAlignment(Java.type("javax.swing.SwingConstants").TOP);
 
-    // ── Mapa ──────────────────────────────────────────────────
+    // Mapa
     this.miniMapa = new JMapViewer();
-    this.miniMapa.setPreferredSize(new Dimension(420, 220));
+    this.miniMapa.setPreferredSize(new Dimension(460, 240));
     this.miniMapa.setZoom(1);
 
-    // ── Radios ────────────────────────────────────────────────
+    // Radios
     this.radioAbertas         = new JRadioButton("Apenas abertas", true);
     this.radioAbertasFechadas = new JRadioButton("Abertas e fechadas", false);
     const grp = new ButtonGroup();
@@ -457,7 +460,27 @@ NotasFinder.prototype._setupUi = function () {
     gbc.fill = GridBagConstraints.BOTH;
     painelFiltros.add(this.labelDica, gbc);
 
-    // ── Painel principal ──────────────────────────────────────
+    // Painel de Progresso Embedded
+    this.labelStatus = new JLabel("Aguardando busca...");
+
+    this.barraProgresso = new JProgressBar(0, 100);
+    this.barraProgresso.setStringPainted(true);
+    this.barraProgresso.setPreferredSize(new Dimension(450, 22));
+
+    this.btnCancelarBusca = new JButton("Cancelar Busca", UIManager.getIcon("OptionPane.cancelIcon"));
+    this.btnCancelarBusca.setEnabled(false);
+
+    const painelProgHeader = new JPanel(new BorderLayout(5, 0));
+    painelProgHeader.add(this.labelStatus, BorderLayout.CENTER);
+    painelProgHeader.add(this.btnCancelarBusca, BorderLayout.EAST);
+
+    this.painelProgresso = new JPanel();
+    this.painelProgresso.setLayout(new BoxLayout(this.painelProgresso, BoxLayout.Y_AXIS));
+    this.painelProgresso.setBorder(BorderFactory.createTitledBorder("Progresso da Busca"));
+    this.painelProgresso.add(painelProgHeader);
+    this.painelProgresso.add(this.barraProgresso);
+
+    // Painel principal
     this.panel = new JPanel();
     this.panel.setLayout(new BoxLayout(this.panel, BoxLayout.Y_AXIS));
     this.panel.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
@@ -465,6 +488,7 @@ NotasFinder.prototype._setupUi = function () {
     this.panel.add(painelBbox);
     this.panel.add(this.miniMapa);
     this.panel.add(painelFiltros);
+    this.panel.add(this.painelProgresso);
 
     // bbox e polígono encontrados pelo Nominatim — null = nenhum
     this._bbox  = null;
@@ -716,7 +740,7 @@ NotasFinder.prototype._atualizarMapa = function (bbox, aneis) {
         this.miniMapa.setCenter(cp || new Point(210, 160));
     }
 };
-// ── Fluxo principal ───────────────────────────────────────────
+// Fluxo principal
 
 NotasFinder.prototype.run = function () {
     const self = this;
@@ -725,6 +749,8 @@ NotasFinder.prototype.run = function () {
 
     const btnOk  = new JButton("Buscar Notas", UIManager.getIcon("OptionPane.okIcon"));
     const btnCan = new JButton("Fechar",        UIManager.getIcon("OptionPane.noIcon"));
+    this.btnOk = btnOk;
+
     const painelBotoes = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 6));
     painelBotoes.add(btnOk);
     painelBotoes.add(btnCan);
@@ -746,7 +772,7 @@ NotasFinder.prototype.run = function () {
 
 NotasFinder.prototype._iniciarBusca = function () {
     const tipoFiltro = String(this.comboTipo.getSelectedItem());
-    const valorRaw   = String(this.fieldValor.getText()).trim();
+    const valorRaw   = String(this.fieldValor.getText()).trim().replace(/\s+/g, " ");
     const onlyOpen   = this.radioAbertas.isSelected();
     const diasFechadas = onlyOpen ? 0 : Number(this.spinnerDias.getValue());
     const valorNorm  = (tipoFiltro !== "ID" && valorRaw) ?
@@ -783,7 +809,7 @@ NotasFinder.prototype._iniciarBusca = function () {
                 .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
             return;
         }
-        this._buscaComTimer([urlBuscaGlobalPalavra(valorRaw)], null, null, null, "Busca global");
+        this._buscaComTimer([urlBuscaGlobalPalavra(valorRaw)], null, "Palavra-chave", valorNorm, "Busca global");
         return;
     }
 
@@ -819,69 +845,47 @@ NotasFinder.prototype._iniciarBusca = function () {
         tipoFiltro, valorNorm, null);
 };
 
-// ── Diálogo de progresso (non-modal) ─────────────────────────
+// Motor central: Timer + HttpClient.sendAsync
 
-NotasFinder.prototype._criarDialogoProgresso = function (titulo, showLog) {
-    const dlg = new JDialog(MainApplication.getMainFrame(), titulo, false);
-    dlg.setLayout(new BorderLayout());
-    dlg.setDefaultCloseOperation(2);
-
-    const labelStatus = new JLabel("Aguarde...");
-    dlg.add(labelStatus, BorderLayout.NORTH);
-
-    let areaUrls = null;
-    if (showLog) {
-        areaUrls = new JTextArea();
-        areaUrls.setEditable(false);
-        const scroll = new JScrollPane(areaUrls);
-        scroll.setPreferredSize(new Dimension(520, 220));
-        dlg.add(scroll, BorderLayout.CENTER);
-    }
-
-    const barra = new JProgressBar();
-    barra.setStringPainted(true);
-    const btnCancelar = new JButton("Cancelar", UIManager.getIcon("OptionPane.cancelIcon"));
-    const panelSul = new JPanel();
-    panelSul.setLayout(new BoxLayout(panelSul, BoxLayout.Y_AXIS));
-    panelSul.add(barra);
-    const pbtn = new JPanel(new FlowLayout(FlowLayout.CENTER));
-    pbtn.add(btnCancelar);
-    panelSul.add(pbtn);
-    dlg.add(panelSul, BorderLayout.SOUTH);
-
-    const cancelado = [false];
-    btnCancelar.addActionListener(function (_e) {
-        cancelado[0] = true;
-        dlg.dispose();
-    });
-
-    dlg.pack();
-    dlg.setSize(showLog ? 600 : 420, showLog ? 380 : 130);
-    dlg.setResizable(false);
-    dlg.setLocationRelativeTo(MainApplication.getMainFrame());
-
-    return { dialog: dlg, barra: barra, labelStatus: labelStatus,
-             areaUrls: areaUrls, cancelado: cancelado };
-};
-
-// ── Motor central: Timer + HttpClient.sendAsync ───────────────
-
-NotasFinder.prototype._buscaUsuarioPaginado = function(usuario, bbox, aneis, onlyOpen) {
-    const url = urlBuscaUsuario(usuario, onlyOpen);
-    this._buscaComTimer([url], null, "Usuário", usuario, "Usuário: " + usuario, bbox, aneis);
+NotasFinder.prototype._buscaUsuarioPaginado = function(usuario, bbox, aneis, onlyOpen, diasFechadas) {
+    const userClean = String(usuario).trim().replace(/\s+/g, " ");
+    const url = urlBuscaUsuario(userClean, onlyOpen, diasFechadas);
+    const valorNorm = removeAcentos(userClean.toLowerCase());
+    this._buscaComTimer([url], null, "Usuário", valorNorm, "Usuário: " + userClean, bbox, aneis);
 };
 
 const NUM_WORKERS = 4; // máximo de downloads simultâneos
 
 NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valorNorm, label, bboxFiltro, aneisFiltro) {
-    const showLog = (blocos !== null);
-    const titulo  = label || "Pesquisando notas...";
-    const p       = this._criarDialogoProgresso(titulo, showLog);
+    const self    = this;
     const total   = urls.length;
+    let cancelado = false;
 
-    p.barra.setIndeterminate(true);
-    p.barra.setMaximum(total);
-    p.labelStatus.setText("Preparando " + total + " requisições...");
+    // Configura UI do painel de progresso embedded
+    this.barraProgresso.setMinimum(0);
+    this.barraProgresso.setMaximum(total);
+    this.barraProgresso.setValue(0);
+    this.barraProgresso.setString("0 de " + total);
+    this.labelStatus.setText("Preparando " + total + " requisições...");
+    this.btnCancelarBusca.setEnabled(true);
+    if (this.btnOk) this.btnOk.setEnabled(false);
+
+    // Listener para o botão de cancelamento
+    const listenerCancel = function (_e) {
+        cancelado = true;
+    };
+
+    // Remove listeners anteriores
+    const listeners = this.btnCancelarBusca.getActionListeners();
+    for (let l = 0; l < listeners.length; l++) {
+        this.btnCancelarBusca.removeActionListener(listeners[l]);
+    }
+    this.btnCancelarBusca.addActionListener(listenerCancel);
+
+    function finalizarBuscaUI() {
+        self.btnCancelarBusca.setEnabled(false);
+        if (self.btnOk) self.btnOk.setEnabled(true);
+    }
 
     const HttpClient   = Java.type("java.net.http.HttpClient");
     const HttpRequest  = Java.type("java.net.http.HttpRequest");
@@ -894,7 +898,7 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
         .executor(Executors.newFixedThreadPool(NUM_WORKERS))
         .build();
 
-    let futures   = new Array(total).fill(null);
+    let futures    = new Array(total).fill(null);
     let disparados = false;
 
     const notas_filtradas = new ArrayList();
@@ -908,8 +912,7 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
     timer.addActionListener(function (_e) {
         if (!disparados) {
             disparados = true;
-            p.barra.setIndeterminate(false);
-            p.labelStatus.setText("Disparando " + total + " requisições...");
+            self.labelStatus.setText("Disparando " + total + " requisições...");
             for (let i = 0; i < urls.length; i++) {
                 const jUrl    = new (Java.type("java.lang.String"))(urls[i]);
                 const request = HttpRequest.newBuilder()
@@ -921,9 +924,12 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
             }
             return;
         }
-        if (p.cancelado[0]) {
+
+        if (cancelado) {
             timer.stop();
-            futures.forEach(function(f) { try { f.cancel(true); } catch(e) {} });
+            futures.forEach(function(f) { try { if (f) f.cancel(true); } catch(e) {} });
+            self.labelStatus.setText("Busca cancelada.");
+            finalizarBuscaUI();
             new Notification("Busca cancelada pelo usuário.")
                 .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
             return;
@@ -943,16 +949,8 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
             // Future concluído
             futures[i] = null;
             concluidos++;
-            p.barra.setValue(concluidos);
-            p.barra.setString(concluidos + " de " + total);
-
-            if (showLog && blocos) {
-                const bl = blocos[i];
-                p.areaUrls.append("[" + concluidos + "/" + total + "]" +
-                    " lon " + bl[0].toFixed(2) + "→" + bl[2].toFixed(2) +
-                    "  lat " + bl[1].toFixed(2) + "→" + bl[3].toFixed(2) +
-                    "\n" + urls[i] + "\n");
-            }
+            self.barraProgresso.setValue(concluidos);
+            self.barraProgresso.setString(concluidos + " de " + total);
 
             try {
                 const response = f.get();
@@ -978,19 +976,23 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
 
                     let adiciona = false;
                     const comments = note.getComments().toArray();
-                    for (let c = 0; c < comments.length; c++) {
-                        if (tipoFiltro === "Palavra-chave") {
-                            const txt = removeAcentos(
-                                String(comments[c].getText() || "").toLowerCase());
-                            if (txt.indexOf(valorNorm) !== -1) { adiciona = true; break; }
-                        } else if (tipoFiltro === "Usuário") {
-                            const uobj  = comments[c].getUser();
-                            const uname = uobj ?
-                                removeAcentos(String(uobj.getName()).toLowerCase()) : "";
-                            // Busca parcial — "tarta" encontra "tartaruga"
-                            if (valorNorm && uname.indexOf(
-                                    removeAcentos(String(valorNorm).toLowerCase())) !== -1) {
-                                adiciona = true; break;
+                    if (tipoFiltro === "Usuário" && !bboxFiltro) {
+                        // Busca global por usuário: a API já filtra pelo display_name
+                        adiciona = true;
+                    } else {
+                        for (let c = 0; c < comments.length; c++) {
+                            if (tipoFiltro === "Palavra-chave") {
+                                const txt = removeAcentos(
+                                    String(comments[c].getText() || "").toLowerCase());
+                                if (txt.indexOf(valorNorm) !== -1) { adiciona = true; break; }
+                            } else if (tipoFiltro === "Usuário") {
+                                const uobj  = comments[c].getUser();
+                                const uname = uobj ?
+                                    removeAcentos(String(uobj.getName()).trim().replace(/\s+/g, " ").toLowerCase()) : "";
+                                // Busca parcial — ex: "Mateusz Konieczny" ou "tarta"
+                                if (valorNorm && uname.indexOf(valorNorm) !== -1) {
+                                    adiciona = true; break;
+                                }
                             }
                         }
                     }
@@ -1017,20 +1019,19 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
                     if (adiciona) { ids_vistos[nid] = true; notas_filtradas.add(note); }
                 }
             } catch (ex) {
-                if (showLog) p.areaUrls.append("  ↳ Erro: " + ex + "\n");
                 // Erro em um bloco não interrompe os demais
             }
         }
 
         // Atualiza status
         const pendentes = total - concluidos;
-        p.labelStatus.setText(concluidos + " de " + total + " concluídos" +
+        self.labelStatus.setText(concluidos + " de " + total + " concluídos" +
             (pendentes > 0 ? " (" + pendentes + " em andamento)..." : ""));
 
         // Todos concluídos
         if (!algumPendente && concluidos === total) {
             timer.stop();
-            p.dialog.dispose();
+            finalizarBuscaUI();
             if (notas_filtradas.size() > 0) {
                 adicionarCamadaNotas(notas_filtradas, "Notas");
                 new Notification(notas_filtradas.size() + " nota(s) encontrada(s).")
@@ -1043,8 +1044,7 @@ NotasFinder.prototype._buscaComTimer = function (urls, blocos, tipoFiltro, valor
     });
 
     timer.start();
-    p.dialog.setVisible(true);
 };
 
-// ── Ponto de entrada ──────────────────────────────────────────
+// Ponto de entrada
 new NotasFinder().run();

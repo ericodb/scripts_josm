@@ -1,7 +1,6 @@
 "use strict"; 
  
 import { println } from 'josm/scriptingconsole'; 
-import { addResetCallback } from 'josm/context'; 
  
 const MainApplication = Java.type("org.openstreetmap.josm.gui.MainApplication"); 
 const Notification    = Java.type("org.openstreetmap.josm.gui.Notification"); 
@@ -51,6 +50,7 @@ function iniciarScript() {
     let lastLayer           = layer; 
     let janelaReverterAberta = false; 
     let idsCandidatos        = ""; 
+    let ultimoReverterWin    = null;
     let temConflito          = false;  
  
 	// Variáveis thread-safe para comunicação segura entre o listener de background e a UI																											  
@@ -399,6 +399,7 @@ function iniciarScript() {
 			// Captura IDs do plugin Reverter								  
             if (winClass === "ChangesetIdQuery") { 
                 reverterVisivelNesteTick = true; 
+                ultimoReverterWin = win;
                 const extrairId = function(comp) { 
                     try { 
                         if (comp.getClass().getSimpleName() === "ChangesetIdsTextField") { 
@@ -438,7 +439,16 @@ function iniciarScript() {
             janelaReverterAberta = true; 
         } else if (janelaReverterAberta) { 
             janelaReverterAberta = false; 
-            if (idsCandidatos) { 
+            let foiConfirmado = true;
+            if (ultimoReverterWin) {
+                try {
+                    if (typeof ultimoReverterWin.getValue === "function") {
+                        foiConfirmado = (ultimoReverterWin.getValue() === 1);
+                    }
+                } catch(e) {}
+            }
+
+            if (foiConfirmado && idsCandidatos) {
                 const novosIds = idsCandidatos.split(/[;,]/) 
                     .map(function(s) { return s.trim(); }) 
                     .filter(function(s) { return s !== ""; }); 
@@ -453,8 +463,9 @@ function iniciarScript() {
                         SwingUtilities.invokeLater(function() { updateUI(); syncTags(); }); 
                     } 
                 } 
-                idsCandidatos = ""; 
             } 
+            idsCandidatos = "";
+            ultimoReverterWin = null;
         } 
     }; 
  
@@ -541,13 +552,6 @@ function iniciarScript() {
         if (ds) ds.addChangeSetTag("revert:id", null); 
         dialog.dispose(); 
     }}))()); 
- 
-    addResetCallback(function() { 
-        try { monitorTimer.stop(); } catch(e) {} 
-        try { ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener); } catch(e) {} 
-        try { MainApplication.getLayerManager().removeLayerChangeListener(layerHandler); } catch(e) {} 
-        dialog.dispose(); 
-    }); 
  
     updateUI(); 
     dialog.pack(); 

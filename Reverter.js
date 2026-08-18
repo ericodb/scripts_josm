@@ -53,12 +53,42 @@ function iniciarScript() {
     let idsCandidatos        = ""; 
     let temConflito          = false;  
  
-	// Variáveis thread-safe para comunicação segura entre o listener de background e a UI																											  
+    let checkTimer = null;
+    let visualDelayTimer = null;
+    let monitorTimer = null;
+    let encerrado = false;
+
+    // Variáveis thread-safe para comunicação segura entre o listener de background e a UI
     const pendingUploadId = { id: null }; 
     const triggerUploadNotification = new AtomicBoolean(false); 
     const activeUploadChangesets = new ConcurrentHashMap(); 
     const temPendenciasFlag = new AtomicBoolean(false); 
  
+    const v = {
+        encerrar: function() {
+            if (encerrado) return;
+            encerrado = true;
+
+            try { if (monitorTimer) monitorTimer.stop(); } catch(e) {}
+            try { if (checkTimer) checkTimer.stop(); } catch(e) {}
+            try { if (visualDelayTimer) visualDelayTimer.stop(); } catch(e) {}
+
+            try { ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener); } catch(e) {}
+            try { MainApplication.getLayerManager().removeLayerChangeListener(layerHandler); } catch(e) {}
+
+            try {
+                const ds = MainApplication.getLayerManager().getEditDataSet();
+                if (ds) ds.addChangeSetTag("revert:id", null);
+            } catch(e) {}
+
+            try {
+                if (dialog && dialog.isVisible()) {
+                    dialog.dispose();
+                }
+            } catch(e) {}
+        }
+    };
+
     const atualizarPendencias = function() { 
         temPendenciasFlag.set(listaGrupos.length > 0); 
     }; 
@@ -79,7 +109,7 @@ function iniciarScript() {
         syncTags(); 
     }; 
  
-	// Formata grupo para exibição: 3 IDs por linha 
+    // Formata grupo para exibição: 3 IDs por linha
     function formatarGrupo(ids) { 
         const linhas = []; 
         for (let i = 0; i < ids.length; i += 3) { 
@@ -88,19 +118,19 @@ function iniciarScript() {
         return linhas.join("<br>"); 
     } 
  
-	// Todos os IDs únicos de todos os grupos													   
+    // Todos os IDs únicos de todos os grupos
     function todosIds() { 
         const set = new Set(); 
         listaGrupos.forEach(grupo => grupo.ids.forEach(id => set.add(id))); 
         return Array.from(set); 
     } 
  
-	// Sync das tags do changeset									 
+    // Sync das tags do changeset
     const syncTags = function() { 
         const ds = MainApplication.getLayerManager().getEditDataSet(); 
         if (!ds) return; 
         const ids = todosIds(); 
-	// Se houver conflito ativo, bloqueia a injeção de tags para evitar corromper o estado do dataset																									    
+        // Se houver conflito ativo, bloqueia a injeção de tags para evitar corromper o estado do dataset
         if (chkInjectId.isSelected() && ids.length > 0 && !temConflito) { 
             ds.addChangeSetTag("revert:id", ids.join(";")); 
         } else { 
@@ -113,7 +143,7 @@ function iniciarScript() {
         } 
     }; 
  
-	// Atualiza lista visual							   
+    // Atualiza lista visual
     const updateUI = function() { 
         listPanel.removeAll(); 
          
@@ -193,7 +223,7 @@ function iniciarScript() {
             listPanel.add(itemPanel, gbc); 
         }); 
  
-		// Filler	   
+        // Filler
         gbc.gridy = listaGrupos.length; 
         gbc.weighty = 1.0; 
         listPanel.add(new JPanel(), gbc); 
@@ -202,7 +232,7 @@ function iniciarScript() {
         listWrapper.repaint(); 
     }; 
  
-	// Envio de comentários em todos os IDs acumulados																   
+    // Envio de comentários em todos os IDs acumulados
     const dispararComentarios = function(novoUploadId) { 
         if (listaGrupos.length === 0 || !novoUploadId) return; 
  
@@ -290,8 +320,14 @@ function iniciarScript() {
  
     // Aguarda o PleaseWaitDialog fechar e aplica 400ms para a UI desenhar a notificação nativa 
     const aguardarFimUploadEDisparar = function(id) { 
-        const check = new Timer(150, new (Java.extend(ActionListener, { 
+        if (encerrado) return;
+        if (checkTimer) { try { checkTimer.stop(); } catch(e) {} }
+        checkTimer = new Timer(150, new (Java.extend(ActionListener, {
             actionPerformed: function(e) { 
+                if (encerrado) {
+                    try { e.getSource().stop(); } catch(err) {}
+                    return;
+                }
                 const windows = java.awt.Window.getWindows(); 
                 let uploading = false; 
                 for (let i = 0; i < windows.length; i++) { 
@@ -303,26 +339,30 @@ function iniciarScript() {
                 } 
                 if (!uploading) { 
                     e.getSource().stop(); 
-                    const visualDelay = new Timer(400, new (Java.extend(ActionListener, { 
+                    if (encerrado) return;
+                    if (visualDelayTimer) { try { visualDelayTimer.stop(); } catch(err) {} }
+                    visualDelayTimer = new Timer(400, new (Java.extend(ActionListener, {
                         actionPerformed: function(evt) { 
                             evt.getSource().stop(); 
+                            if (encerrado) return;
                             dispararComentarios(id); 
                         } 
                     }))()); 
-                    visualDelay.setRepeats(false); 
-                    visualDelay.start(); 
+                    visualDelayTimer.setRepeats(false);
+                    visualDelayTimer.start();
                 } 
             } 
         }))()); 
-        check.setRepeats(true); 
-        check.start(); 
+        checkTimer.setRepeats(true);
+        checkTimer.start();
     }; 
  
-	// ChangesetCacheListener blindado contra histórico															   
+    // ChangesetCacheListener blindado contra histórico
     const changesetCacheListener = new (Java.extend(ChangesetCacheListener, { 
         changesetCacheUpdated: function(event) { 
+            if (encerrado) return;
             try { 
-				// 1. Rastreia apenas os changesets que abrem enquanto temos IDs para reverter																					    
+                // 1. Rastreia apenas os changesets que abrem enquanto temos IDs para reverter
                 if (!temPendenciasFlag.get()) return; 
  
                 const added = event.getAddedChangesets().iterator(); 
@@ -333,7 +373,7 @@ function iniciarScript() {
                     } 
                 } 
  
-				// 2. Só aceita o fechamento se o changeset estava na lista de abertos																			    
+                // 2. Só aceita o fechamento se o changeset estava na lista de abertos
                 const updated = event.getUpdatedChangesets().iterator(); 
                 while (updated.hasNext()) { 
                     let cs = updated.next(); 
@@ -341,7 +381,7 @@ function iniciarScript() {
                      
                     if (!cs.isOpen() && activeUploadChangesets.containsKey(csIdStr)) { 
                         activeUploadChangesets.remove(csIdStr); 
-						// Se estiver em conflito, ignora o fecho automático do changeset atual																		 
+                        // Se estiver em conflito, ignora o fecho automático do changeset atual
                         if (!temConflito && csIdStr !== lastChangesetId) { 
                             lastChangesetId = csIdStr; 
                             pendingUploadId.id = csIdStr; 
@@ -358,8 +398,10 @@ function iniciarScript() {
     // Listener de camadas para limpar imediatamente ao remover a camada 
     const layerHandler = new (Java.extend(LayerChangeListener, { 
         layerRemoving: function(e) { 
+            if (encerrado) return;
             if (e.getRemovedLayer() instanceof OsmDataLayer) { 
                 SwingUtilities.invokeLater(function() { 
+                    if (encerrado) return;
                     limparEstadoCompleto(); 
                 }); 
             } 
@@ -368,8 +410,9 @@ function iniciarScript() {
         layerOrderChanged: function(e) {} 
     }))(); 
  
-	// Monitoramento de janelas 
+    // Monitoramento de janelas
     const monitorarJanelas = function() { 
+        if (encerrado) return;
         const windows = java.awt.Window.getWindows(); 
         let reverterVisivelNesteTick = false; 
         let conflitoVisivelNesteTick = false; 
@@ -380,7 +423,7 @@ function iniciarScript() {
             if (!win || !win.isVisible()) continue; 
             const winClass = win.getClass().getSimpleName(); 
              
-			// Deteta o diálogo de conflito gerado pelo JOSM (HTTP 409)															 
+            // Deteta o diálogo de conflito gerado pelo JOSM (HTTP 409)
             if (winClass.match(/JOptionPane|HelpAwareOptionPane/i)) { 
                 try { 
                     const title = String(win.getTitle() || ""); 
@@ -396,7 +439,7 @@ function iniciarScript() {
  
             if (winClass.match(/HistoryBrowserDialog|NotePopup|OSMObjInfoDialog|ValidatorDialog|Notification/i)) continue; 
  
-			// Captura IDs do plugin Reverter								  
+            // Captura IDs do plugin Reverter
             if (winClass === "ChangesetIdQuery") { 
                 reverterVisivelNesteTick = true; 
                 const extrairId = function(comp) { 
@@ -415,17 +458,22 @@ function iniciarScript() {
             } 
         } 
  
-		// Se ocorreu conflito, bloqueia a limpeza automática e protege os dados																		  
+        // Se ocorreu conflito, bloqueia a limpeza automática e protege os dados
         if (conflitoVisivelNesteTick && !temConflito) { 
             temConflito = true; 
             activeUploadChangesets.clear(); 
-            SwingUtilities.invokeLater(function() { updateUI(); syncTags(); }); 
+            SwingUtilities.invokeLater(function() {
+                if (encerrado) return;
+                updateUI();
+                syncTags();
+            });
         } 
  
-		// Se estava em conflito, mas o utilizador abriu um novo UploadDialog após corrigir, destrava automaticamente																											   
+        // Se estava em conflito, mas o utilizador abriu um novo UploadDialog após corrigir, destrava automaticamente
         if (temConflito && uploadDialogVisivelNesteTick) { 
             temConflito = false; 
             SwingUtilities.invokeLater(function() {  
+                if (encerrado) return;
                 updateUI();  
                 syncTags(); 
                 new Notification("Conflito ultrapassado. Tags de reestruturação re-aplicadas.") 
@@ -433,7 +481,7 @@ function iniciarScript() {
             }); 
         } 
  
-		// Processa ao fechar a janela do reverter									 
+        // Processa ao fechar a janela do reverter
         if (reverterVisivelNesteTick) { 
             janelaReverterAberta = true; 
         } else if (janelaReverterAberta) { 
@@ -450,7 +498,11 @@ function iniciarScript() {
                     if (!jaExiste) { 
                         listaGrupos.push({ ids: novosIds, parcial: false, textoExtra: "" }); 
                         atualizarPendencias(); 
-                        SwingUtilities.invokeLater(function() { updateUI(); syncTags(); }); 
+                        SwingUtilities.invokeLater(function() {
+                            if (encerrado) return;
+                            updateUI();
+                            syncTags();
+                        });
                     } 
                 } 
                 idsCandidatos = ""; 
@@ -458,7 +510,7 @@ function iniciarScript() {
         } 
     }; 
  
-	// Interface			   
+    // Interface
     const parent = MainApplication.getMainFrame(); 
     const dialog = new JDialog(parent, "Complemento do Plugin Reverter", false); 
     dialog.setLayout(new BorderLayout(8, 8)); 
@@ -468,7 +520,7 @@ function iniciarScript() {
     outerPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8)); 
     dialog.setContentPane(outerPanel); 
  
-	// Checkboxes			    
+    // Checkboxes
     const chkInjectId = new JCheckBox("Inserir revert:id no changeset", true); 
     chkInjectId.setFont(chkInjectId.getFont().deriveFont(11.0)); 
     const chkInjectComment = new JCheckBox("Inserir comentário no changeset", true); 
@@ -477,7 +529,7 @@ function iniciarScript() {
     chkInjectId.addActionListener(new (Java.extend(ActionListener, { actionPerformed: function() { syncTags(); } }))()); 
     chkInjectComment.addActionListener(new (Java.extend(ActionListener, { actionPerformed: function() { syncTags(); } }))()); 
  
-	// Campo novo upload						  
+    // Campo novo upload
     const uploadPanel = new JPanel(new BorderLayout(4, 4)); 
     uploadPanel.setBorder(BorderFactory.createTitledBorder("ID do Novo Upload (Automático)")); 
     const txtNovoUpload = new JTextField(); 
@@ -488,7 +540,7 @@ function iniciarScript() {
     chkPanel.add(chkInjectId); 
     chkPanel.add(chkInjectComment); 
  
-	// Texto de aviso					  
+    // Texto de aviso
     const lblAviso = new JLabel("<html><font color='red'><b>Reverter no máximo 20 changesets por vez.<br>"+ 
                     "Evita erro no limíte de caracteres (Máx. 255)</b></font></html>"); 
     lblAviso.setFont(lblAviso.getFont().deriveFont(10.5)); 
@@ -498,7 +550,7 @@ function iniciarScript() {
     uploadPanel.add(chkPanel, BorderLayout.SOUTH); 
     outerPanel.add(uploadPanel, BorderLayout.NORTH); 
  
-	// Lista de grupos					  
+    // Lista de grupos
     const listWrapper = new JPanel(new BorderLayout()); 
     let listBorder = BorderFactory.createTitledBorder("ID's dos Changesets Revertidos (0)"); 
     listWrapper.setBorder(listBorder); 
@@ -510,9 +562,12 @@ function iniciarScript() {
     listWrapper.add(scrollPane, BorderLayout.CENTER); 
     outerPanel.add(listWrapper, BorderLayout.CENTER); 
  
-	// Timer consome flags thread-safe e evita property change do AWT																					   
-    const monitorTimer = new Timer(1000, new (Java.extend(ActionListener, { actionPerformed: function() { 
-        if (!dialog.isVisible()) { monitorTimer.stop(); return; } 
+    // Timer consome flags thread-safe e evita property change do AWT
+    monitorTimer = new Timer(1000, new (Java.extend(ActionListener, { actionPerformed: function() {
+        if (encerrado || !dialog.isVisible()) {
+            if (monitorTimer) { try { monitorTimer.stop(); } catch(e) {} }
+            return;
+        }
  
         if (triggerUploadNotification.getAndSet(false) && !temConflito) { 
             const id = pendingUploadId.id; 
@@ -521,7 +576,7 @@ function iniciarScript() {
                 new Notification("Upload detectado: " + id + ". Enviando comentários...") 
                     .setIcon(UIManager.getIcon("OptionPane.informationIcon")).show(); 
  
-				// Usa o poller dinâmico do PleaseWaitDialog 
+                // Usa o poller dinâmico do PleaseWaitDialog
                 aguardarFimUploadEDisparar(id); 
             } 
         } 
@@ -534,19 +589,11 @@ function iniciarScript() {
     MainApplication.getLayerManager().addLayerChangeListener(layerHandler); 
  
     dialog.addWindowListener(new (Java.extend(WindowAdapter, { windowClosing: function() { 
-        monitorTimer.stop(); 
-        ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener); 
-        MainApplication.getLayerManager().removeLayerChangeListener(layerHandler); 
-        const ds = MainApplication.getLayerManager().getEditDataSet(); 
-        if (ds) ds.addChangeSetTag("revert:id", null); 
-        dialog.dispose(); 
+        v.encerrar();
     }}))()); 
  
     addResetCallback(function() { 
-        try { monitorTimer.stop(); } catch(e) {} 
-        try { ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener); } catch(e) {} 
-        try { MainApplication.getLayerManager().removeLayerChangeListener(layerHandler); } catch(e) {} 
-        dialog.dispose(); 
+        v.encerrar();
     }); 
  
     updateUI(); 

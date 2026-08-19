@@ -12,9 +12,11 @@ const Color                = Java.type("java.awt.Color");
 const Font                 = Java.type("java.awt.Font");
 const Toolkit              = Java.type("java.awt.Toolkit");
 const GraphicsEnvironment   = Java.type("java.awt.GraphicsEnvironment");
+const Dialog               = Java.type("java.awt.Dialog");
 const AWTEvent             = Java.type("java.awt.AWTEvent");
 const KeyEvent             = Java.type("java.awt.event.KeyEvent");
 const MouseEvent           = Java.type("java.awt.event.MouseEvent");
+const WindowEvent          = Java.type("java.awt.event.WindowEvent");
 const MouseAdapter         = Java.extend(Java.type("java.awt.event.MouseAdapter"));
 const MouseMotionAdapter   = Java.extend(Java.type("java.awt.event.MouseMotionAdapter"));
 const AWTEventListener     = Java.extend(Java.type("java.awt.event.AWTEventListener"));
@@ -40,14 +42,16 @@ const LineBorder           = Java.type("javax.swing.border.LineBorder");
 
     const v = {
         lmb: false, rmb: false, alt: false, ctrl: false, shift: false, tecla: "", lastCode: null,
-        keyDispatcher: null, mouseListener: null,
+        keyDispatcher: null, awtListener: null,
 
         // Inicialização: cria o diálogo, labels, listener e timer
         init: function() {
             this.dialog = new JDialog(MainApplication.getMainFrame(), false);
             this.dialog.setUndecorated(true);
             this.dialog.setSize(530, 48);
+            this.dialog.setAutoRequestFocus(false);
             this.dialog.setFocusableWindowState(false);
+            this.dialog.setModalExclusionType(Dialog.ModalExclusionType.APPLICATION_EXCLUDE);
 
             const mainPanel = new JPanel();
             mainPanel.setLayout(null);
@@ -98,17 +102,21 @@ const LineBorder           = Java.type("javax.swing.border.LineBorder");
             });
             KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(this.keyDispatcher);
 
-            // Listener global de mouse via Toolkit
-            this.mouseListener = new AWTEventListener({
+            // Listener global via Toolkit para teclado, mouse e janelas
+            this.awtListener = new AWTEventListener({
                 eventDispatched: (event) => {
-                    if (event instanceof MouseEvent) {
+                    if (event instanceof KeyEvent) {
+                        this.handleKeyEvent(event);
+                    } else if (event instanceof MouseEvent) {
                         this.handleMouseEvent(event);
+                    } else if (event instanceof WindowEvent) {
+                        this.handleWindowEvent(event);
                     }
                 }
             });
             Toolkit.getDefaultToolkit().addAWTEventListener(
-                this.mouseListener,
-                AWTEvent.MOUSE_EVENT_MASK
+                this.awtListener,
+                AWTEvent.KEY_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK | AWTEvent.WINDOW_EVENT_MASK | AWTEvent.WINDOW_FOCUS_EVENT_MASK
             );
 
             // Arrastar o diálogo pela janela
@@ -128,18 +136,19 @@ const LineBorder           = Java.type("javax.swing.border.LineBorder");
 
             this.atualizarLabels();
             this.dialog.setVisible(true);
+            this.dialog.toFront();
         },
 
-        // Limpeza: remove o listener do Toolkit, para o timer e fecha o diálogo
+        // Limpeza: remove os listeners, para o timer e fecha o diálogo
         encerrar: function() {
             if (this.timer) this.timer.stop();
             if (this.keyDispatcher) {
                 KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(this.keyDispatcher);
                 this.keyDispatcher = null;
             }
-            if (this.mouseListener) {
-                Toolkit.getDefaultToolkit().removeAWTEventListener(this.mouseListener);
-                this.mouseListener = null;
+            if (this.awtListener) {
+                Toolkit.getDefaultToolkit().removeAWTEventListener(this.awtListener);
+                this.awtListener = null;
             }
             if (this.dialog) {
                 this.dialog.dispose();
@@ -257,6 +266,10 @@ const LineBorder           = Java.type("javax.swing.border.LineBorder");
             } else if (id === KeyEvent.KEY_RELEASED) {
                 this.atualizarLabels();
             }
+
+            if (event.getSource() !== this.dialog) {
+                this.dialog.toFront();
+            }
         },
 
         handleMouseEvent: function(event) {
@@ -271,6 +284,17 @@ const LineBorder           = Java.type("javax.swing.border.LineBorder");
                 else if (event.getButton() === MouseEvent.BUTTON3) this.rmb = false;
             }
             this.atualizarLabels();
+            if (event.getSource() !== this.dialog) {
+                this.dialog.toFront();
+            }
+        },
+
+        handleWindowEvent: function(event) {
+            if (!this.dialog || !this.dialog.isVisible()) return;
+
+            if (event.getSource() !== this.dialog) {
+                this.dialog.toFront();
+            }
         }
     };
 

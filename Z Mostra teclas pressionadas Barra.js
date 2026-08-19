@@ -3,27 +3,25 @@
 import { addResetCallback } from 'josm/context';
 
 // IMPORTS
-const MainApplication        = Java.type("org.openstreetmap.josm.gui.MainApplication");
-const JDialog                = Java.type("javax.swing.JDialog");
-const JLabel                 = Java.type("javax.swing.JLabel");
-const JPanel                 = Java.type("javax.swing.JPanel");
-const Timer                  = Java.type("javax.swing.Timer");
-const Color                  = Java.type("java.awt.Color");
-const Font                   = Java.type("java.awt.Font");
-const Toolkit                = Java.type("java.awt.Toolkit");
-const GraphicsEnvironment     = Java.type("java.awt.GraphicsEnvironment");
-const AWTEvent               = Java.type("java.awt.AWTEvent");
-const KeyEvent               = Java.type("java.awt.event.KeyEvent");
-const MouseEvent             = Java.type("java.awt.event.MouseEvent");
-const WindowEvent            = Java.type("java.awt.event.WindowEvent");
-const MouseAdapter           = Java.extend(Java.type("java.awt.event.MouseAdapter"));
-const MouseMotionAdapter     = Java.extend(Java.type("java.awt.event.MouseMotionAdapter"));
-const AWTEventListener       = Java.extend(Java.type("java.awt.event.AWTEventListener"));
-const ActionListener         = Java.extend(Java.type("java.awt.event.ActionListener"));
-const PropertyChangeListener = Java.extend(Java.type("java.beans.PropertyChangeListener"));
-const KeyboardFocusManager   = Java.type("java.awt.KeyboardFocusManager");
-const KeyEventDispatcher     = Java.extend(Java.type("java.awt.KeyEventDispatcher"));
-const LineBorder             = Java.type("javax.swing.border.LineBorder");
+const MainApplication      = Java.type("org.openstreetmap.josm.gui.MainApplication");
+const JDialog              = Java.type("javax.swing.JDialog");
+const JLabel               = Java.type("javax.swing.JLabel");
+const JPanel               = Java.type("javax.swing.JPanel");
+const Timer                = Java.type("javax.swing.Timer");
+const Color                = Java.type("java.awt.Color");
+const Font                 = Java.type("java.awt.Font");
+const Toolkit              = Java.type("java.awt.Toolkit");
+const GraphicsEnvironment   = Java.type("java.awt.GraphicsEnvironment");
+const AWTEvent             = Java.type("java.awt.AWTEvent");
+const KeyEvent             = Java.type("java.awt.event.KeyEvent");
+const MouseEvent           = Java.type("java.awt.event.MouseEvent");
+const MouseAdapter         = Java.extend(Java.type("java.awt.event.MouseAdapter"));
+const MouseMotionAdapter   = Java.extend(Java.type("java.awt.event.MouseMotionAdapter"));
+const AWTEventListener     = Java.extend(Java.type("java.awt.event.AWTEventListener"));
+const ActionListener       = Java.extend(Java.type("java.awt.event.ActionListener"));
+const KeyboardFocusManager = Java.type("java.awt.KeyboardFocusManager");
+const KeyEventDispatcher   = Java.extend(Java.type("java.awt.KeyEventDispatcher"));
+const LineBorder           = Java.type("javax.swing.border.LineBorder");
 
 (function() {
     const CENTER_ALIGN = 0;
@@ -42,14 +40,13 @@ const LineBorder             = Java.type("javax.swing.border.LineBorder");
 
     const v = {
         lmb: false, rmb: false, alt: false, ctrl: false, shift: false, tecla: "", lastCode: null,
-        keyDispatcher: null, mouseListener: null, activeWindowListener: null,
+        keyDispatcher: null, mouseListener: null,
 
         // Inicialização: cria o diálogo, labels, listener e timer
         init: function() {
             this.dialog = new JDialog(MainApplication.getMainFrame(), false);
             this.dialog.setUndecorated(true);
             this.dialog.setSize(530, 48);
-            this.dialog.setAutoRequestFocus(false);
             this.dialog.setFocusableWindowState(false);
 
             const mainPanel = new JPanel();
@@ -101,27 +98,17 @@ const LineBorder             = Java.type("javax.swing.border.LineBorder");
             });
             KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(this.keyDispatcher);
 
-            // Listener de ativação de janela para alternar setAlwaysOnTop dinamicamente
-            this.activeWindowListener = new PropertyChangeListener({
-                propertyChange: (evt) => {
-                    this.atualizarOnTop();
-                }
-            });
-            KeyboardFocusManager.getCurrentKeyboardFocusManager().addPropertyChangeListener("activeWindow", this.activeWindowListener);
-
-            // Listener global de teclado, mouse e janelas via Toolkit
+            // Listener global de mouse via Toolkit
             this.mouseListener = new AWTEventListener({
                 eventDispatched: (event) => {
                     if (event instanceof MouseEvent) {
                         this.handleMouseEvent(event);
-                    } else if (event instanceof WindowEvent) {
-                        this.handleWindowEvent(event);
                     }
                 }
             });
             Toolkit.getDefaultToolkit().addAWTEventListener(
                 this.mouseListener,
-                AWTEvent.MOUSE_EVENT_MASK | AWTEvent.WINDOW_EVENT_MASK | AWTEvent.WINDOW_FOCUS_EVENT_MASK
+                AWTEvent.MOUSE_EVENT_MASK
             );
 
             // Arrastar o diálogo pela janela
@@ -141,45 +128,20 @@ const LineBorder             = Java.type("javax.swing.border.LineBorder");
 
             this.atualizarLabels();
             this.dialog.setVisible(true);
-            this.atualizarOnTop();
         },
 
-        // Atualiza a propriedade AlwaysOnTop com base em a aplicação JOSM estar ativa
-        atualizarOnTop: function() {
-            if (!this.dialog) return;
-
-            const activeWin = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
-            const isJosmActive = (activeWin !== null);
-
-            if (isJosmActive) {
-                if (!this.dialog.isAlwaysOnTop()) {
-                    this.dialog.setAlwaysOnTop(true);
-                }
-                this.dialog.toFront();
-            } else {
-                if (this.dialog.isAlwaysOnTop()) {
-                    this.dialog.setAlwaysOnTop(false);
-                }
-            }
-        },
-
-        // Limpeza: remove listeners, para o timer e fecha o diálogo
+        // Limpeza: remove o listener do Toolkit, para o timer e fecha o diálogo
         encerrar: function() {
             if (this.timer) this.timer.stop();
             if (this.keyDispatcher) {
                 KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(this.keyDispatcher);
                 this.keyDispatcher = null;
             }
-            if (this.activeWindowListener) {
-                KeyboardFocusManager.getCurrentKeyboardFocusManager().removePropertyChangeListener("activeWindow", this.activeWindowListener);
-                this.activeWindowListener = null;
-            }
             if (this.mouseListener) {
                 Toolkit.getDefaultToolkit().removeAWTEventListener(this.mouseListener);
                 this.mouseListener = null;
             }
             if (this.dialog) {
-                this.dialog.setAlwaysOnTop(false);
                 this.dialog.dispose();
                 this.dialog = null;
             }
@@ -309,13 +271,6 @@ const LineBorder             = Java.type("javax.swing.border.LineBorder");
                 else if (event.getButton() === MouseEvent.BUTTON3) this.rmb = false;
             }
             this.atualizarLabels();
-            this.atualizarOnTop();
-        },
-
-        handleWindowEvent: function(event) {
-            if (!this.dialog || !this.dialog.isVisible()) return;
-
-            this.atualizarOnTop();
         }
     };
 

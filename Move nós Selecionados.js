@@ -12,19 +12,24 @@ const JLabel          = Java.type("javax.swing.JLabel");
 const JButton         = Java.type("javax.swing.JButton");
 const JSpinner        = Java.type("javax.swing.JSpinner");
 const SpinnerNumberModel = Java.type("javax.swing.SpinnerNumberModel");
+const Timer           = Java.type("javax.swing.Timer");
 const BoxLayout       = Java.type("javax.swing.BoxLayout");
 const BorderFactory   = Java.type("javax.swing.BorderFactory");
-const BorderLayout    = Java.type("java.awt.BorderLayout");
-const ArrayList       = Java.type("java.util.ArrayList");
+const SwingUtilities  = Java.type("javax.swing.SwingUtilities");
 const Box             = Java.type("javax.swing.Box");
+const ArrayList       = Java.type("java.util.ArrayList");
+const Float           = Java.type("java.lang.Float");
+const BorderLayout    = Java.type("java.awt.BorderLayout");
 const Color           = Java.type("java.awt.Color");
 const BasicStroke     = Java.type("java.awt.BasicStroke");
 const RenderingHints  = Java.type("java.awt.RenderingHints");
-const SwingUtilities  = Java.type("javax.swing.SwingUtilities");
 const WindowListener  = Java.type("java.awt.event.WindowListener");
 const MouseListener   = Java.type("java.awt.event.MouseListener");
-const Polygon         = Java.type("java.awt.Polygon");
-const Timer           = Java.type("javax.swing.Timer");
+const Font            = Java.type("java.awt.Font");
+const GradientPaint   = Java.type("java.awt.GradientPaint");
+const RoundRectangle2D = Java.type("java.awt.geom.RoundRectangle2D");
+const Area            = Java.type("java.awt.geom.Area");
+const GeneralPath     = Java.type("java.awt.geom.GeneralPath");
 
 (function() {
     const currentLayer = MainApplication.getLayerManager().getEditLayer();
@@ -40,21 +45,21 @@ const Timer           = Java.type("javax.swing.Timer");
     let setaPressionada = -1;
     let lblAnguloTexto;
 
-    const SETAS = [
-        { id: 0, anguloFn: function() { return anguloAtualRad + Math.PI / 2; }, tipo: "p", direcao:   1 }, // cima
-        { id: 1, anguloFn: function() { return anguloAtualRad - Math.PI / 2; }, tipo: "p", direcao:  -1 }, // baixo
-        { id: 2, anguloFn: function() { return anguloAtualRad + Math.PI;     }, tipo: "t", direcao:   1 }, // trás
-        { id: 3, anguloFn: function() { return anguloAtualRad;               }, tipo: "t", direcao:  -1 }  // frente
-    ];
+    // Dimensões do D-pad
+    const ARM_LEN  = 66;   // comprimento do braço
+    const ARM_W    = 28;   // largura do braço
+    const HALF_W   = ARM_W / 2;
+    const R_CENTER = 19;   // raio botão central
+    const ARC      = 10;   // arredondamento das pontas
 
     function atualizarLabelAngulo() {
         if (!lblAnguloTexto) return;
         let graus = Math.round(anguloAtualRad * (180.0 / Math.PI));
         graus = -graus; 
         if (graus < 0) graus += 360;
-
-        lblAnguloTexto.setText("<html><div style='text-align: center; color: #555555; font-size: 10px;'>" +
-                               "Ângulo do Segmento: <b style='color: #e65100; font-size: 11px;'>" + graus + "°</b></div></html>");
+        lblAnguloTexto.setText(
+            "<html><div style='text-align:center;color:#888;font-size:10px;'>" +
+            "Ângulo: <b style='color:#e65100;font-size:11px;'>" + graus + "°</b></div></html>");
     }
 
     function recalcularAnguloSelecao() {
@@ -63,10 +68,8 @@ const Timer           = Java.type("javax.swing.Timer");
         const nodes = layer.data.getSelectedNodes();
         if (nodes && nodes.size() >= 2) {
             const it = nodes.iterator();
-            const n1 = it.next();
-            const n2 = it.next();
-            const c1 = n1.getCoor();
-            const c2 = n2.getCoor();
+            const n1 = it.next(), n2 = it.next();
+            const c1 = n1.getCoor(), c2 = n2.getCoor();
             const latRad = ((c1.lat() + c2.lat()) / 2.0) * (Math.PI / 180.0);
             const mPerDegLat = 111319.492;
             const mPerDegLon = mPerDegLat * Math.cos(latRad);
@@ -87,140 +90,136 @@ const Timer           = Java.type("javax.swing.Timer");
         return model.getValue();
     }
 
-    const moverNósSelecao = function(distancia, tipo, direcao) {
+    const moverNósSelecao = function(distancia, alpha) {
         try {
             const layer = MainApplication.getLayerManager().getEditLayer();
             if (!layer) return;
             const nodes = layer.data.getSelectedNodes();
             if (!recalcularAnguloSelecao() || nodes.isEmpty()) {
-                new Notification("Ação bloqueada: Selecione pelo menos 2 nós no mapa.")
+                new Notification("Selecione pelo menos 2 nós no mapa.")
                     .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
                 return;
             }
-
-            const anguloGeo = -anguloAtualRad;
-            let anguloFinal = anguloGeo - Math.PI / 2; 
-
-            if (tipo === "p") {
-                anguloFinal += (direcao === 1) ? Math.PI / 2 : -Math.PI / 2;
-            } else {
-                if (direcao === -1) anguloFinal += Math.PI;
-            }
-
-            const mx2 = Math.cos(anguloFinal);
-            const my2 = Math.sin(anguloFinal);
+            const mx2 = Math.cos(alpha);
+            const my2 = -Math.sin(alpha);
             const scale = 1.0 / Math.cos(nodes.iterator().next().getCoor().lat() * Math.PI / 180.0);
-            const dEnX = mx2 * distancia * scale;
-            const dEnY = my2 * distancia * scale;
             const cmds = new ArrayList();
             const itAll = nodes.iterator();
             while (itAll.hasNext()) {
                 const n = itAll.next();
                 if (!initialPositions.has(n)) initialPositions.set(n, n.getEastNorth());
-                cmds.add(new MoveCommand(n, dEnX, dEnY));
+                cmds.add(new MoveCommand(n, mx2 * distancia * scale, my2 * distancia * scale));
             }
             UndoRedoHandler.getInstance().add(new SequenceCommand("Ajuste Fino Direcional", cmds));
             movimentosAcumulados++;
         } catch (e) {
-            new Notification("Erro na operação: " + e)
-                .setIcon(UIManager.getIcon("OptionPane.errorIcon")).show();
+            new Notification("Erro: " + e).setIcon(UIManager.getIcon("OptionPane.errorIcon")).show();
         }
     };
 
-    function difAngulo(a, b) {
-        let diff = ((a - b) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-        return diff > Math.PI ? 2 * Math.PI - diff : diff;
+    // Rotaciona o ponto para o referencial do braço solicitado
+    function pontoNoBraco(lx, ly, id) {
+        let angle = 0;
+        if (id === 0) angle = Math.PI / 2;   // Cima
+        else if (id === 1) angle = -Math.PI / 2; // Baixo
+        else if (id === 2) angle = Math.PI;  // Trás
+        // id===3: Frente, angle=0
+
+        const cosA = Math.cos(-angle), sinA = Math.sin(-angle);
+        const rx = lx * cosA - ly * sinA;
+        const ry = lx * sinA + ly * cosA;
+
+        return rx >= HALF_W && rx <= ARM_LEN && Math.abs(ry) <= HALF_W;
     }
 
-    function detectarSeta(mx, my, cx, cy, r) {
-        const dx = mx - cx;
-        const dy = my - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const rSeta = r + 14;
-        if (dist < r + 2 || dist > rSeta + 16) return null;
-
-        const anguloClique = Math.atan2(dy, dx) + Math.PI / 2;
-
-        let melhor = null;
-        let menorD = Math.PI / 4;
-        for (let i = 0; i < SETAS.length; i++) {
-            const d = difAngulo(anguloClique, SETAS[i].anguloFn());
-            if (d < menorD) { menorD = d; melhor = SETAS[i]; }
-        }
-        return melhor;
+    // Constrói o path de um braço com ponta arredondada (apenas as duas pontas do fim)
+    function buildArmPath(g2d) {
+        const p = new GeneralPath();
+        p.moveTo(HALF_W, -HALF_W);
+        p.lineTo(ARM_LEN - ARC, -HALF_W);
+        p.quadTo(ARM_LEN, -HALF_W, ARM_LEN, -HALF_W + ARC);
+        p.lineTo(ARM_LEN, HALF_W - ARC);
+        p.quadTo(ARM_LEN, HALF_W, ARM_LEN - ARC, HALF_W);
+        p.lineTo(HALF_W, HALF_W);
+        p.closePath();
+        return p;
     }
 
     const JPanelExtended = Java.extend(JPanel);
     const controlePanel = new JPanelExtended({
-        getPreferredSize: function() {
-            return new (Java.type("java.awt.Dimension"))(160, 160);
-        },
-        getMinimumSize: function() {
-            return new (Java.type("java.awt.Dimension"))(160, 160);
-        },
+        getPreferredSize: function() { return new (Java.type("java.awt.Dimension"))(140, 140); },
+        getMinimumSize:   function() { return new (Java.type("java.awt.Dimension"))(140, 140); },
         paintComponent: function(g) {
             Java.super(controlePanel).paintComponent(g);
             const g2d = g;
             g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-            const w = controlePanel.getWidth();
-            const h = controlePanel.getHeight();
-            const cx = w / 2;
-            const cy = h / 2;
-            const r = 42;
-            const rSeta = r + 14;
+            const cx = controlePanel.getWidth() / 2;
+            const cy = controlePanel.getHeight() / 2;
 
+            g2d.translate(cx, cy);
+            g2d.rotate(anguloAtualRad);
+
+            // Quatro braços
+            const DIRS = [
+                { id: 3, angle: 0,              label: "Frente" },
+                { id: 0, angle: Math.PI / 2,    label: "Cima"   },
+                { id: 2, angle: Math.PI,         label: "Trás"   },
+                { id: 1, angle: -Math.PI / 2,   label: "Baixo"  }
+            ];
+
+            DIRS.forEach(function(dir) {
+                g2d.rotate(dir.angle);
+                const arm = buildArmPath(g2d);
+
+                // Gradiente do braço: base mais escura, ponta mais clara
+                const pressed = (setaPressionada === dir.id);
+                const colBase = pressed ? new Color(140, 190,  255)  : new Color(45, 48, 50);
+                const colTip  = pressed ? new Color(80, 140, 255) : new Color(75, 78, 82);
+                const gp = new GradientPaint(HALF_W, 0, colBase, ARM_LEN, 0, colTip);
+                g2d.setPaint(gp);
+                g2d.fill(arm);
+
+                // Borda fina
+                g2d.setColor(pressed ? new Color(180, 60, 0) : new Color(30, 30, 30));
+                g2d.setStroke(new BasicStroke(Float.parseFloat("1.2")));
+                g2d.draw(arm);
+
+                // Seta triangular na ponta
+                const tx = ARM_LEN - 14;
+                const arrowSize = 7;
+                const ap = new GeneralPath();
+                ap.moveTo(tx + arrowSize, 0);
+                ap.lineTo(tx - arrowSize / 2, -arrowSize);
+                ap.lineTo(tx - arrowSize / 2,  arrowSize);
+                ap.closePath();
+                g2d.setColor(pressed ? new Color(255, 255, 200) : new Color(220, 220, 220));
+                g2d.fill(ap);
+
+                g2d.rotate(-dir.angle);
+            });
+
+            // Botão central
+            const pressedC = (setaPressionada === 99);
+            const gcBase = pressedC ? new Color(80, 140, 255) : new Color(45, 48, 50);
+            const gcTip  = pressedC ? new Color(140, 190, 255): new Color(75, 78, 82);
+            g2d.setPaint(new GradientPaint(-R_CENTER, -R_CENTER, gcBase, R_CENTER, R_CENTER, gcTip));
+            g2d.fillOval(-R_CENTER, -R_CENTER, R_CENTER * 2, R_CENTER * 2);
+            g2d.setColor(pressedC ? new Color(50, 100, 200) : new Color(25, 25, 25));
+            g2d.setStroke(new BasicStroke(Float.parseFloat("1.2")));
+            g2d.drawOval(-R_CENTER, -R_CENTER, R_CENTER * 2, R_CENTER * 2);
+
+            // Ícone 🔄 no centro
+            g2d.setFont(new Font("Dialog", Font.PLAIN, 15));
+            const fm = g2d.getFontMetrics();
+            const txt = "🔄️";
             g2d.setColor(Color.WHITE);
-            g2d.setStroke(new BasicStroke(1));
-            g2d.drawOval(cx - r, cy - r, r * 2, r * 2);
-
-            g2d.setColor(new Color(190, 190, 190));
-            g2d.setStroke(new BasicStroke(1));
-            g2d.drawLine(cx - r, cy, cx + r, cy);
-            g2d.drawLine(cx, cy - r, cx, cy + r);
-
-            const cosA = Math.cos(anguloAtualRad);
-            const sinA = Math.sin(anguloAtualRad);
-            g2d.setColor(Color.RED);
-            g2d.setStroke(new BasicStroke(5));
-            g2d.drawLine(
-                Math.round(cx - r * cosA), Math.round(cy - r * sinA),
-                Math.round(cx + r * cosA), Math.round(cy + r * sinA)
-            );
-
-            for (let i = 0; i < SETAS.length; i++) {
-                const s = SETAS[i];
-                const pressionada = (s.id === setaPressionada);
-                const ang = s.anguloFn();
-
-                g2d.translate(cx, cy);
-                g2d.rotate(ang);
-                const base = -Math.round(rSeta);
-
-                // Fundo arredondado (estilo botão)
-                const bx = -9;
-                const by = base - 6;
-                const bw = 18;
-                const bh = 16;
-                const arc = 6;
-                
-                g2d.setColor(pressionada ? new Color(100, 160, 255) : new Color(65, 65, 65));
-                g2d.fillRoundRect(bx, by, bw, bh, arc, arc);
-                g2d.setColor(pressionada ? new Color(50, 100, 200) : new Color(130, 130, 130));
-                g2d.setStroke(new BasicStroke(pressionada ? 2.0 : 1.0));
-                g2d.drawRoundRect(bx, by, bw, bh, arc, arc);
+            g2d.drawString(txt, -fm.stringWidth(txt) / 2, fm.getAscent() / 2 - 1);
  
-                // Triângulo
-                const p = new Polygon();
-                p.addPoint(0,  base - 3);
-                p.addPoint(5,  base + 6);
-                p.addPoint(-5, base + 6);
-                g2d.setColor(pressionada ? new Color(255, 255, 255) : new Color(200, 200, 200));
-                g2d.fillPolygon(p);
+            g2d.rotate(-anguloAtualRad);
+            g2d.translate(-cx, -cy);
 
-                g2d.rotate(-ang);
-                g2d.translate(-cx, -cy);
-            }
             atualizarLabelAngulo();
         }
     });
@@ -232,17 +231,58 @@ const Timer           = Java.type("javax.swing.Timer");
         mouseClicked: function(e) {
             const cx = controlePanel.getWidth() / 2;
             const cy = controlePanel.getHeight() / 2;
-            const seta = detectarSeta(e.getX(), e.getY(), cx, cy, 42);
-            if (!seta) return;
+            const dx = e.getX() - cx;
+            const dy = e.getY() - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
 
-            setaPressionada = seta.id;
+            // Botão central
+            if (dist <= R_CENTER + 2) {
+                setaPressionada = 99;
+                controlePanel.repaint();
+                if (!recalcularAnguloSelecao()) {
+                    new Notification("Nenhum segmento válido para sincronia.")
+                        .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
+                }
+                const t = new Timer(150, function() { setaPressionada = -1; controlePanel.repaint(); });
+                t.setRepeats(false); t.start();
+                return;
+            }
+
+            // Converte clique para o sistema local (rotacionado)
+            const cosA = Math.cos(-anguloAtualRad), sinA = Math.sin(-anguloAtualRad);
+            const lx = dx * cosA - dy * sinA;
+            const ly = dx * sinA + dy * cosA;
+
+            // Testa cada braço com geometria precisa
+            let hitId = -1, hitAlpha = 0;
+            const DIRS = [
+                { id: 3, angle: 0,              alpha: anguloAtualRad },
+                { id: 0, angle: Math.PI / 2,    alpha: anguloAtualRad + Math.PI / 2 },
+                { id: 2, angle: Math.PI,         alpha: anguloAtualRad + Math.PI },
+                { id: 1, angle: -Math.PI / 2,   alpha: anguloAtualRad - Math.PI / 2 }
+            ];
+
+            for (let i = 0; i < DIRS.length; i++) {
+                const dir = DIRS[i];
+                // Rotaciona o ponto local para o referencial do braço
+                const ca = Math.cos(-dir.angle), sa = Math.sin(-dir.angle);
+                const bx = lx * ca - ly * sa;
+                const by = lx * sa + ly * ca;
+                // O braço vai de HALF_W a ARM_LEN em X e -HALF_W a HALF_W em Y
+                if (bx >= HALF_W - 2 && bx <= ARM_LEN + 2 && Math.abs(by) <= HALF_W + 2) {
+                    hitId = dir.id;
+                    hitAlpha = dir.alpha;
+                    break;
+                }
+            }
+
+            if (hitId === -1) return; // clique fora de qualquer braço
+
+            setaPressionada = hitId;
             controlePanel.repaint();
-
-            moverNósSelecao(getValorSpinner(), seta.tipo, seta.direcao);
-
-            const t = new Timer(150, function(_e) { setaPressionada = -1; controlePanel.repaint(); });
-            t.setRepeats(false);
-            t.start();
+            moverNósSelecao(getValorSpinner(), hitAlpha);
+            const t = new Timer(150, function() { setaPressionada = -1; controlePanel.repaint(); });
+            t.setRepeats(false); t.start();
         },
         mousePressed:  function(e) {},
         mouseReleased: function(e) {},
@@ -250,38 +290,28 @@ const Timer           = Java.type("javax.swing.Timer");
         mouseExited:   function(e) {}
     }));
 
-    const dialog = new JDialog(MainApplication.getMainFrame(), "Move nós Selecionados", false);
+    // Interface
+    const dialog = new JDialog(MainApplication.getMainFrame(), "Mover Nós Selecionados", false);
     const mainPanel = new JPanel();
     mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
-    mainPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
-    mainPanel.setBackground(UIManager.getColor("Panel.background"));
+    mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
 
     const model = new SpinnerNumberModel(1.0, 0.0, 100.0, 0.5);
     const spinner = new JSpinner(model);
-
-    const btnSync = new JButton("🔄");
-    btnSync.setToolTipText("Sincronizar ângulo com seleção atual");
-    btnSync.addActionListener(function() {
-        if (!recalcularAnguloSelecao()) {
-            new Notification("Nenhum segmento válido selecionado para sincronia.")
-                .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
-        }
-        mainPanel.repaint();
-    });
+    spinner.setPreferredSize(new (Java.type("java.awt.Dimension"))(70, 24));
 
     const sP = new JPanel();
     sP.setOpaque(false);
     sP.add(new JLabel("Passo (m):"));
     sP.add(spinner);
-    sP.add(btnSync);
     mainPanel.add(sP);
-    mainPanel.add(Box.createVerticalStrut(5));
+    mainPanel.add(Box.createVerticalStrut(2));
 
     const centerContainer = new JPanel(new BorderLayout());
     centerContainer.setOpaque(false);
     centerContainer.add(controlePanel, BorderLayout.CENTER);
     mainPanel.add(centerContainer);
-    mainPanel.add(Box.createVerticalStrut(5));
+    mainPanel.add(Box.createVerticalStrut(2));
 
     recalcularAnguloSelecao();
 
@@ -292,15 +322,11 @@ const Timer           = Java.type("javax.swing.Timer");
                 if (recalcularAnguloSelecao()) mainPanel.repaint();
             });
         },
-        windowClosed:      function(e) {},
-        windowClosing:     function(e) {},
-        windowDeactivated: function(e) {},
-        windowIconified:   function(e) {},
-        windowDeiconified: function(e) {},
-        windowOpened:      function(e) {}
+        windowClosed: function(e) {}, windowClosing: function(e) {},
+        windowDeactivated: function(e) {}, windowIconified: function(e) {},
+        windowDeiconified: function(e) {}, windowOpened: function(e) {}
     }));
 
-    // Painel para o texto em HTML do ângulo
     const anguloPanel = new JPanel();
     anguloPanel.setOpaque(false);
     lblAnguloTexto = new JLabel();
@@ -313,23 +339,18 @@ const Timer           = Java.type("javax.swing.Timer");
     const btnCc = new JButton("Cancelar", UIManager.getIcon("OptionPane.noIcon"));
 
     btnOk.addActionListener(function() {
-        if (movimentosAcumulados > 0) {
-            new Notification(movimentosAcumulados + " ajuste(s) aplicado(s) com sucesso.")
-                .setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
-        } else {
-            new Notification("Nenhuma alteração foi realizada.")
-                .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
-        }
+        new Notification(movimentosAcumulados > 0
+            ? movimentosAcumulados + " ajuste(s) aplicado(s)."
+            : "Nenhuma alteração realizada."
+        ).setIcon(UIManager.getIcon(movimentosAcumulados > 0
+            ? "OptionPane.informationIcon" : "OptionPane.warningIcon")).show();
         dialog.dispose();
     });
 
-    // Reverte todas as alterações acumuladas ao cancelar
     btnCc.addActionListener(function() {
         if (movimentosAcumulados > 0) {
-            for (let i = 0; i < movimentosAcumulados; i++) {
-                UndoRedoHandler.getInstance().undo();
-            }
-            new Notification("Operação cancelada: todas as alterações foram revertidas.")
+            for (let i = 0; i < movimentosAcumulados; i++) UndoRedoHandler.getInstance().undo();
+            new Notification("Cancelado: alterações revertidas.")
                 .setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
         } else {
             new Notification("Operação cancelada.")
@@ -341,15 +362,15 @@ const Timer           = Java.type("javax.swing.Timer");
     footer.add(btnOk);
     footer.add(btnCc);
 
-    const painelInferiorCompleto = new JPanel();
-    painelInferiorCompleto.setLayout(new BoxLayout(painelInferiorCompleto, BoxLayout.Y_AXIS));
-    painelInferiorCompleto.setOpaque(false);
-    painelInferiorCompleto.add(anguloPanel);
-    painelInferiorCompleto.add(footer);
+    const painelInf = new JPanel();
+    painelInf.setLayout(new BoxLayout(painelInf, BoxLayout.Y_AXIS));
+    painelInf.setOpaque(false);
+    painelInf.add(anguloPanel);
+    painelInf.add(footer);
 
     const content = new JPanel(new BorderLayout());
     content.add(mainPanel, BorderLayout.CENTER);
-    content.add(painelInferiorCompleto, BorderLayout.SOUTH);
+    content.add(painelInf,  BorderLayout.SOUTH);
 
     dialog.setContentPane(content);
     dialog.pack();

@@ -474,13 +474,10 @@ globalThis.busRouteTool = {
     },
 
     showWindow: function() {
-        if (this.dialog && this.dialog.isVisible()) return;
-
-        if (globalThis.__scriptCleanup__) {
-            try { globalThis.__scriptCleanup__(); } catch(e) {}
-        }
-        if (globalThis.scriptCleanup) {
-            try { globalThis.scriptCleanup(); } catch(e) {}
+        if (this.dialog && this.dialog.isVisible()) {
+            if (globalThis.scriptCleanup) {
+                try { globalThis.scriptCleanup(); } catch(e) {}
+            }
         }
 
         const safeRemoveFromAllDataSets = function(listener) {
@@ -868,6 +865,13 @@ globalThis.busRouteTool = {
 };
 
 // --- Início ---
+if (globalThis.__scriptCleanup__) {
+    try { globalThis.__scriptCleanup__(); } catch(e) {}
+}
+if (globalThis.scriptCleanup) {
+    try { globalThis.scriptCleanup(); } catch(e) {}
+}
+
 if (!MainApplication.isDisplayingMapView()) {
     new Notification("Nenhuma camada ativa.").setIcon(JOptionPane.ERROR_MESSAGE).show();
 } else {

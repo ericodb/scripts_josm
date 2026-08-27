@@ -747,6 +747,8 @@ globalThis.busRouteTool = {
 
         let isCleanedUp = false;
         const dialogRef = this.dialog;
+        let windowAdapter = null;
+
         const cleanup = function() {
             if (isCleanedUp) return;
             isCleanedUp = true;
@@ -769,6 +771,10 @@ globalThis.busRouteTool = {
             busRouteTool.selecaoTravada = false;
 
             if (dialogRef) {
+                if (windowAdapter) {
+                    try { dialogRef.removeWindowListener(windowAdapter); } catch(e) {}
+                    windowAdapter = null;
+                }
                 try {
                     const listeners = dialogRef.getWindowListeners();
                     for (let i = 0; i < listeners.length; i++) {
@@ -790,9 +796,15 @@ globalThis.busRouteTool = {
         globalThis.__scriptCleanup__ = cleanup;
         globalThis.scriptCleanup = cleanup;
 
-        this.dialog.addWindowListener(new WindowAdapter({ windowClosing: (e) => {
-            cleanup();
-        }}));
+        windowAdapter = new WindowAdapter({
+            windowClosing: function(e) {
+                SwingUtilities.invokeLater(function() {
+                    cleanup();
+                });
+            },
+            windowClosed: function(e) {}
+        });
+        this.dialog.addWindowListener(windowAdapter);
 
         // DataSelectionListener: atualiza o label de status quando a seleção muda
         const DataSelectionListenerStatus = Java.extend(
@@ -832,7 +844,7 @@ globalThis.busRouteTool = {
                 const removed = e.getRemovedLayer();
                 if (!(removed instanceof OsmDataLayer)) return;
                 SwingUtilities.invokeLater(function() {
-                    // Remove listeners do dataset que está sendo excluído
+                    // Remove listeners do dataset que está sendo excluído e de todas as camadas
                     const dsRemoved = removed.getDataSet ? removed.getDataSet() : null;
                     if (dsRemoved) {
                         try { dsRemoved.removeSelectionListener(busRouteTool.selecaoListener); } catch(ex) {}
@@ -851,8 +863,10 @@ globalThis.busRouteTool = {
 
                     // Re-registra listener no novo dataset ativo (se houver)
                     const dsNovo = MainApplication.getLayerManager().getEditDataSet();
-                    if (dsNovo && busRouteTool.selectionChangeListener)
+                    if (dsNovo && busRouteTool.selectionChangeListener) {
+                        safeRemoveFromAllDataSets(busRouteTool.selectionChangeListener);
                         dsNovo.addSelectionListener(busRouteTool.selectionChangeListener);
+                    }
                 });
             }
         });

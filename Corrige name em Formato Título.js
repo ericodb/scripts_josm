@@ -1,6 +1,5 @@
 "use strict";
 
-import { addResetCallback } from 'josm/context';
 import { println } from 'josm/scriptingconsole';
 
 // --- IMPORTS JAVA ---
@@ -35,6 +34,41 @@ const WindowAdapter = Java.extend(Java.type("java.awt.event.WindowAdapter"));
 // --- GLOBAL STORAGE ---
 let voiceDialog    = null;
 let layerListener  = null;
+let windowAdapter  = null;
+let isCleanedUp    = false;
+
+const cleanup = function() {
+    if (isCleanedUp) return;
+    isCleanedUp = true;
+
+    if (layerListener) {
+        try { MainApplication.getLayerManager().removeLayerChangeListener(layerListener); } catch(e) {}
+        layerListener = null;
+    }
+    if (voiceDialog) {
+        try {
+            const listeners = voiceDialog.getWindowListeners();
+            for (let i = 0; i < listeners.length; i++) {
+                voiceDialog.removeWindowListener(listeners[i]);
+            }
+        } catch(e) {}
+        if (windowAdapter) {
+            try { voiceDialog.removeWindowListener(windowAdapter); } catch(e) {}
+            windowAdapter = null;
+        }
+        try { voiceDialog.dispose(); } catch(e) {}
+        voiceDialog = null;
+    }
+};
+
+if (typeof __josmContextResetHooks__ !== 'undefined') {
+    __josmContextResetHooks__.register(cleanup);
+}
+
+if (globalThis.__scriptCleanup__) {
+    try { globalThis.__scriptCleanup__(); } catch(e) {}
+}
+globalThis.__scriptCleanup__ = cleanup;
 
 function formatarNome(text) {
     if (!text) return "";
@@ -246,9 +280,7 @@ function mostrarInterfaceVoz() {
             const removed = e.getRemovedLayer();
             if (removed && removed.data && removed.data === sourceDs) {
                 SwingUtilities.invokeLater(function() {
-                    MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-                    layerListener = null;
-                    if (voiceDialog) { voiceDialog.dispose(); voiceDialog = null; }
+                    cleanup();
                     new Notification("Camada removida. Diálogo fechado.")
                         .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
                 });
@@ -257,24 +289,14 @@ function mostrarInterfaceVoz() {
     });
     MainApplication.getLayerManager().addLayerChangeListener(layerListener);
 
-    // Remove layerListener ao fechar o diálogo pelo X
-    voiceDialog.addWindowListener(new WindowAdapter({ windowClosing: function() {
-        if (layerListener) {
-            MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-            layerListener = null;
-        }
-    }}));
+    // Remove window listener e limpa ao fechar o diálogo pelo X
+    windowAdapter = new WindowAdapter({ windowClosing: function() {
+        cleanup();
+    }});
+    voiceDialog.addWindowListener(windowAdapter);
 
     voiceDialog.setVisible(true);
 }
-
-addResetCallback(function() {
-    if (layerListener) {
-        try { MainApplication.getLayerManager().removeLayerChangeListener(layerListener); } catch(e) {}
-        layerListener = null;
-    }
-    if (voiceDialog) { voiceDialog.dispose(); voiceDialog = null; }
-});
 
 const _layer = MainApplication.getLayerManager().getEditLayer();
 if (!_layer || !_layer.data) {

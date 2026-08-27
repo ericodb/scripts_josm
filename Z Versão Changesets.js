@@ -1,7 +1,5 @@
 "use strict";
 
-import { addResetCallback } from 'josm/context';
-
 (function() {
     const MainApplication       = Java.type("org.openstreetmap.josm.gui.MainApplication");
     const Notification          = Java.type("org.openstreetmap.josm.gui.Notification");
@@ -69,6 +67,9 @@ import { addResetCallback } from 'josm/context';
     }
 
     // Faxina prévia de instâncias anteriores
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
     if (globalThis.changesetToolCleanup) {
         try { globalThis.changesetToolCleanup(); } catch(e) {}
     }
@@ -498,18 +499,42 @@ import { addResetCallback } from 'josm/context';
         strongListeners.clear();
         delete globalThis._changesetToolState;
         
-        if (dialog && dialog.isVisible()) {
-            dialog.dispose();
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            try {
+                dialog.dispose();
+            } catch(e) {}
         }
     }
 
-    globalThis.changesetToolCleanup = encerrarDialogo;
-    addResetCallback(encerrarDialogo);
+    const cleanup = encerrarDialogo;
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+    globalThis.changesetToolCleanup = cleanup;
 
     const WindowAdapter = Java.extend(Java.type("java.awt.event.WindowAdapter"));
     dialog.addWindowListener(new WindowAdapter({
-        windowClosing: function(e) { encerrarDialogo(); },
-        windowClosed:  function(e) { encerrarDialogo(); }
+        windowClosing: function(e) { cleanup(); },
+        windowClosed:  function(e) { cleanup(); }
     }));
 
     sincronizarDataSetListener();

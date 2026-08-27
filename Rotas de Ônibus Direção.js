@@ -44,6 +44,17 @@ const Way             = Java.type("org.openstreetmap.josm.data.osm.Way");
 const Relation        = Java.type("org.openstreetmap.josm.data.osm.Relation");
 const RelationMember  = Java.type("org.openstreetmap.josm.data.osm.RelationMember");
 
+// --- Faxina prévia de instâncias anteriores ---
+if (globalThis.__scriptCleanup__) {
+    try { globalThis.__scriptCleanup__(); } catch(e) {}
+}
+if (globalThis.scriptCleanup) {
+    try { globalThis.scriptCleanup(); } catch(e) {}
+}
+if (globalThis.busRouteTool) {
+    try { globalThis.busRouteTool.removeArrows(true); } catch(e) {}
+}
+
 globalThis.busRouteTool = {
     currentArrows: null,
     activeRelation: null,
@@ -843,9 +854,12 @@ globalThis.busRouteTool = {
             layerRemoving: function(e) {
                 const removed = e.getRemovedLayer();
                 if (!(removed instanceof OsmDataLayer)) return;
+                const dsRemoved = removed.getDataSet ? removed.getDataSet() : null;
+                if (busRouteTool.sourceDs && dsRemoved === busRouteTool.sourceDs) {
+                    busRouteTool.removeArrows(true);
+                }
                 SwingUtilities.invokeLater(function() {
                     // Remove listeners do dataset que está sendo excluído e de todas as camadas
-                    const dsRemoved = removed.getDataSet ? removed.getDataSet() : null;
                     if (dsRemoved) {
                         try { dsRemoved.removeSelectionListener(busRouteTool.selecaoListener); } catch(ex) {}
                         try { dsRemoved.removeSelectionListener(busRouteTool.selectionChangeListener); } catch(ex) {}
@@ -879,13 +893,6 @@ globalThis.busRouteTool = {
 };
 
 // --- Início ---
-if (globalThis.__scriptCleanup__) {
-    try { globalThis.__scriptCleanup__(); } catch(e) {}
-}
-if (globalThis.scriptCleanup) {
-    try { globalThis.scriptCleanup(); } catch(e) {}
-}
-
 if (!MainApplication.isDisplayingMapView()) {
     new Notification("Nenhuma camada ativa.").setIcon(JOptionPane.ERROR_MESSAGE).show();
 } else {

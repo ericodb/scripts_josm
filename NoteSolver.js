@@ -41,6 +41,9 @@
     const LayerChangeListener  = org.openstreetmap.josm.gui.layer.LayerManager.LayerChangeListener;
 
     // --- Variáveis de Estado Globais ---
+    let dialog = null;
+    let windowAdapter = null;
+    let isCleanedUp = false;
     let rememberedNotes = []; 
     let currentPainter = null;
     let notesJList = null;
@@ -269,9 +272,57 @@
         activeLayerChange: function(e) {}, layerOrderChanged: function(e) {}
     }))();
 
+    // --- Lógica de Cleanup do Contexto / Diálogo ---
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        try {
+            if (timerVerificacao) timerVerificacao.stop();
+            if (notesJList && rendererOriginal) notesJList.setCellRenderer(rendererOriginal);
+            if (layerHandler) MainApplication.getLayerManager().removeLayerChangeListener(layerHandler);
+            if (changesetCacheListener) ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener);
+            const mv = MainApplication.getMap() ? MainApplication.getMap().mapView : null;
+            if (currentPainter && mv) mv.removeTemporaryLayer(currentPainter);
+        } catch(err) {
+            java.lang.System.err.println("Erro Resolver_Notas: " + err);
+        }
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            if (windowAdapter) {
+                try { dialog.removeWindowListener(windowAdapter); } catch(e) {}
+                windowAdapter = null;
+            }
+            try { dialog.dispose(); } catch(e) {}
+            dialog = null;
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
     // --- Inicialização Segura da UI ---
     SwingUtilities.invokeLater(function() {
-        const dialog = new JDialog(MainApplication.getMainFrame(), "Resolver_Notas", false);
+        dialog = new JDialog(MainApplication.getMainFrame(), "Resolver_Notas", false);
         dialog.setLayout(new BorderLayout(8, 8));
         dialog.setSize(new Dimension(250, 350));
         dialog.setLocationRelativeTo(MainApplication.getMainFrame());
@@ -370,22 +421,11 @@
             }
         });
 
-        // --- Limpeza Total ao Fechar a Janela ---
-        const fecharDialogoCompleto = function() {
-            try {
-                timerVerificacao.stop(); // Para todos os timers
-                if (notesJList && rendererOriginal) notesJList.setCellRenderer(rendererOriginal);
-                if (layerHandler) MainApplication.getLayerManager().removeLayerChangeListener(layerHandler);
-                if (changesetCacheListener) ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener);
-                const mv = MainApplication.getMap() ? MainApplication.getMap().mapView : null;
-                if (currentPainter && mv) mv.removeTemporaryLayer(currentPainter);
-            } catch(err) { java.lang.System.err.println("Erro Resolver_Notas: " + err); } finally { dialog.dispose(); }
-        };
-
         instalarRendererDestaque();
         MainApplication.getLayerManager().addLayerChangeListener(layerHandler);
         ChangesetCache.getInstance().addChangesetCacheListener(changesetCacheListener);
-        dialog.addWindowListener(new (Java.extend(WindowAdapter, { windowClosing: function(e) { fecharDialogoCompleto(); } })));
+        windowAdapter = new (Java.extend(WindowAdapter, { windowClosing: function(e) { cleanup(); } }))();
+        dialog.addWindowListener(windowAdapter);
         dialog.setVisible(true);
     });
 })();

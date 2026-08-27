@@ -46,6 +46,12 @@ const cleanup = function() {
         layerListener = null;
     }
     if (voiceDialog) {
+        try {
+            const listeners = voiceDialog.getWindowListeners();
+            for (let i = 0; i < listeners.length; i++) {
+                voiceDialog.removeWindowListener(listeners[i]);
+            }
+        } catch(e) {}
         if (windowAdapter) {
             try { voiceDialog.removeWindowListener(windowAdapter); } catch(e) {}
             windowAdapter = null;

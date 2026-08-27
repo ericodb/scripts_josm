@@ -458,6 +458,50 @@ function mostrarDialogo(poly) {
     dialog.pack();
     dialog.setLocationRelativeTo(MainApplication.getMainFrame());
 
+    let isCleanedUp = false;
+    let windowAdapter = null;
+
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        desfazer_preview();
+
+        if (layerListener) {
+            try { MainApplication.getLayerManager().removeLayerChangeListener(layerListener); } catch(e) {}
+        }
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            if (windowAdapter) {
+                try { dialog.removeWindowListener(windowAdapter); } catch(e) {}
+                windowAdapter = null;
+            }
+            try { dialog.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
     // Layer listener
     const layerListener = new LayerChangeListener({
         layerAdded:        function(e) {},
@@ -465,8 +509,7 @@ function mostrarDialogo(poly) {
         layerRemoving:     function(e) {
             if (e.getRemovedLayer() === layer) {
                 SwingUtilities.invokeLater(function() {
-                    MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-                    dialog.dispose();
+                    cleanup();
                     new Notification("Camada removida. Fechando diálogo.")
                         .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
                 });
@@ -477,16 +520,10 @@ function mostrarDialogo(poly) {
 
     // Listeners
     btn_ok.addActionListener(new ActionListener({ actionPerformed: function() {
-        MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-        dialog.dispose();
-
-        // Transfere ID da way original para a geometria arredondada:
-        if (state.previewCriado) {
-            UndoRedoHandler.getInstance().undo();
-            state.previewCriado = false;
-        }
-
         const pts  = gerar_pontos_arredondados();
+
+        cleanup();
+
         const cmds = new ArrayList();
         const nodes_list = new ArrayList();
         
@@ -530,17 +567,15 @@ function mostrarDialogo(poly) {
     }}));
 
     btn_can.addActionListener(new ActionListener({ actionPerformed: function() {
-        MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-        dialog.dispose();
-        desfazer_preview();
+        cleanup();
         new Notification("Operação cancelada.")
             .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
     }}));
 
-    dialog.addWindowListener(new WindowAdapter({ windowClosing: function() {
-        MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-        desfazer_preview();
-    }}));
+    windowAdapter = new WindowAdapter({ windowClosing: function() {
+        cleanup();
+    }});
+    dialog.addWindowListener(windowAdapter);
 
     // Cria preview inicial e abre
     desenhar_preview();

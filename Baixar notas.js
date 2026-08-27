@@ -26,6 +26,7 @@ const Dimension    = Java.type("java.awt.Dimension");
 const FlowLayout   = Java.type("java.awt.FlowLayout");
 const Color        = Java.type("java.awt.Color");
 const Point        = Java.type("java.awt.Point");
+const WindowAdapter = Java.type("java.awt.event.WindowAdapter");
 
 const JavaURL           = Java.type("java.net.URL");
 const URLEncoder        = Java.type("java.net.URLEncoder");
@@ -764,8 +765,44 @@ NotasFinder.prototype.run = function () {
     dlg.pack();
     dlg.setLocationRelativeTo(MainApplication.getMainFrame());
 
+    let isCleanedUp = false;
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        if (dlg) {
+            try {
+                const listeners = dlg.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dlg.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            try { dlg.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
+    dlg.addWindowListener(new (Java.extend(WindowAdapter, {
+        windowClosing: function() { cleanup(); }
+    }))());
+
     btnOk.addActionListener(function (_e) { self._iniciarBusca(); });
-    btnCan.addActionListener(function (_e) { dlg.dispose(); });
+    btnCan.addActionListener(function (_e) { cleanup(); });
 
     dlg.setVisible(true);
 };

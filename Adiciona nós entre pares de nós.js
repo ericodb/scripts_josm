@@ -327,6 +327,31 @@ function mostrarDialogo() {
         atualizar_status(); // atualiza segmentos/nós com novo estado da via
     }
 
+    // ── Cleanup
+    let isCleanedUp = false;
+    let windowAdapter = null;
+
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+        if (layerListener) {
+            try { MainApplication.getLayerManager().removeLayerChangeListener(layerListener); } catch(e) {}
+        }
+        if (windowAdapter) {
+            try { dialog.removeWindowListener(windowAdapter); } catch(e) {}
+        }
+        dialog.dispose();
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+
     // ── Layer listener 
     const layerListener = new LayerChangeListener({
         layerAdded:        function(e) {},
@@ -334,8 +359,7 @@ function mostrarDialogo() {
         layerRemoving:     function(e) {
             if (e.getRemovedLayer() === layer) {
                 SwingUtilities.invokeLater(function() {
-                    MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-                    dialog.dispose();
+                    cleanup();
                     new Notification("Camada removida. Fechando diálogo.")
                         .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
                 });
@@ -352,8 +376,7 @@ function mostrarDialogo() {
     // OK — fecha e notifica total
     btn_ok.addActionListener(new ActionListener({
         actionPerformed: function() {
-            MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-            dialog.dispose();
+            cleanup();
             if (total_aplicados > 0) {
                 new Notification("Concluído. Total de nós adicionados: " + total_aplicados + ".")
                     .setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
@@ -367,8 +390,7 @@ function mostrarDialogo() {
     // Cancelar — desfaz todas as inserções da sessão
     btn_can.addActionListener(new ActionListener({
         actionPerformed: function() {
-            MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
-            dialog.dispose();
+            cleanup();
             if (total_aplicados > 0) {
                 // cada Aplicar gerou 1 SequenceCommand — desfaz um por um
                 // porém não temos contagem de quantos Aplicar foram clicados.
@@ -384,11 +406,12 @@ function mostrarDialogo() {
         }
     }));
 
-    dialog.addWindowListener(new WindowAdapter({
+    windowAdapter = new WindowAdapter({
         windowClosing: function() {
-            MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
+            cleanup();
         }
-    }));
+    });
+    dialog.addWindowListener(windowAdapter);
 
     atualizar_status();
     dialog.setVisible(true);

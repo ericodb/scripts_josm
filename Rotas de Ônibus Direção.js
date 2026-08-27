@@ -61,6 +61,7 @@ globalThis.busRouteTool = {
     btnRecarregar: null,
     lblRelsEncontradas: null,
     selectionChangeListener: null,
+    layerChangeListener: null,
     identifiedIds: new Set(),   // IDs das relações atualmente identificadas
     tableRowSorter: null,       // TableRowSorter configurável
     chkIdentTopo: null,         // checkbox "identificadas no topo"
@@ -482,6 +483,28 @@ globalThis.busRouteTool = {
             try { globalThis.scriptCleanup(); } catch(e) {}
         }
 
+        const safeRemoveFromAllDataSets = function(listener) {
+            if (!listener) return;
+            try {
+                const layers = MainApplication.getLayerManager().getLayers().toArray();
+                for (let i = 0; i < layers.length; i++) {
+                    const l = layers[i];
+                    if (l instanceof OsmDataLayer) {
+                        const ds = l.getDataSet ? l.getDataSet() : null;
+                        if (ds) {
+                            try { ds.removeSelectionListener(listener); } catch(ex) {}
+                        }
+                    }
+                }
+            } catch(ex) {}
+            try {
+                const editDs = MainApplication.getLayerManager().getEditDataSet();
+                if (editDs) {
+                    try { editDs.removeSelectionListener(listener); } catch(ex) {}
+                }
+            } catch(ex) {}
+        };
+
         const GridLayout   = Java.type("java.awt.GridLayout");
         const FlowLayout   = Java.type("java.awt.FlowLayout");
         const RelationEditor = Java.type("org.openstreetmap.josm.gui.dialogs.relation.RelationEditor");
@@ -654,8 +677,7 @@ globalThis.busRouteTool = {
                 this.selecaoTravada = false;
                 this.btnSelecionar.setText("✔️ Selecionar");
                 if (this.selecaoListener) {
-                    const ds = MainApplication.getLayerManager().getEditDataSet();
-                    if (ds) ds.removeSelectionListener(this.selecaoListener);
+                    safeRemoveFromAllDataSets(this.selecaoListener);
                     this.selecaoListener = null;
                 }
                 return;
@@ -733,15 +755,20 @@ globalThis.busRouteTool = {
             isCleanedUp = true;
 
             busRouteTool.removeArrows(true);
-            const dsClose = MainApplication.getLayerManager().getEditDataSet();
-            const safeRemove = function(ds, listener) {
-                if (!ds || !listener) return;
-                try { ds.removeSelectionListener(listener); } catch(e) {}
-            };
-            safeRemove(dsClose, busRouteTool.selecaoListener);
+
+            safeRemoveFromAllDataSets(busRouteTool.selecaoListener);
             busRouteTool.selecaoListener = null;
-            safeRemove(dsClose, busRouteTool.selectionChangeListener);
+
+            safeRemoveFromAllDataSets(busRouteTool.selectionChangeListener);
             busRouteTool.selectionChangeListener = null;
+
+            if (busRouteTool.layerChangeListener) {
+                try {
+                    MainApplication.getLayerManager().removeLayerChangeListener(busRouteTool.layerChangeListener);
+                } catch(e) {}
+                busRouteTool.layerChangeListener = null;
+            }
+
             busRouteTool.selecaoTravada = false;
 
             if (dialogRef) {
@@ -784,7 +811,12 @@ globalThis.busRouteTool = {
         if (dsInit) dsInit.addSelectionListener(this.selectionChangeListener);
 
         // LayerChangeListener: limpa tabela e listeners ao excluir a camada de dados
-        const LayerChangeListener = Java.extend(
+        if (this.layerChangeListener) {
+            try { MainApplication.getLayerManager().removeLayerChangeListener(this.layerChangeListener); } catch(e) {}
+            this.layerChangeListener = null;
+        }
+
+        const LayerChangeListenerClass = Java.extend(
             Java.type("org.openstreetmap.josm.gui.layer.LayerManager.LayerChangeListener"), {
             layerAdded: function(e) {
                 if (!(e.getAddedLayer() instanceof OsmDataLayer)) return;
@@ -805,12 +837,10 @@ globalThis.busRouteTool = {
                 SwingUtilities.invokeLater(function() {
                     // Remove listeners do dataset que está sendo excluído
                     const dsRemoved = removed.getDataSet ? removed.getDataSet() : null;
-                    const safeRem = function(ds, lst) {
-                        if (!ds || !lst) return;
-                        try { ds.removeSelectionListener(lst); } catch(ex) {}
-                    };
-                    safeRem(dsRemoved, busRouteTool.selecaoListener);
-                    safeRem(dsRemoved, busRouteTool.selectionChangeListener);
+                    if (dsRemoved) {
+                        try { dsRemoved.removeSelectionListener(busRouteTool.selecaoListener); } catch(ex) {}
+                        try { dsRemoved.removeSelectionListener(busRouteTool.selectionChangeListener); } catch(ex) {}
+                    }
 
                     // Limpa tabela, estado e listeners
                     if (busRouteTool.tableModel) busRouteTool.tableModel.setRowCount(0);
@@ -829,7 +859,8 @@ globalThis.busRouteTool = {
                 });
             }
         });
-        MainApplication.getLayerManager().addLayerChangeListener(new LayerChangeListener());
+        this.layerChangeListener = new LayerChangeListenerClass();
+        MainApplication.getLayerManager().addLayerChangeListener(this.layerChangeListener);
 
         this.atualizarStatusRelacoes();
         this.dialog.setVisible(true);

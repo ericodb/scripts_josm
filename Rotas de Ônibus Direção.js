@@ -718,19 +718,55 @@ globalThis.busRouteTool = {
         this.dialog.pack();
         this.dialog.setSize(450, 560);
         this.dialog.setLocationRelativeTo(MainApplication.getMainFrame());
-        this.dialog.addWindowListener(new WindowAdapter({ windowClosing: (e) => {
-            this.removeArrows(false);
+
+        let isCleanedUp = false;
+        const dialogRef = this.dialog;
+        const cleanup = function() {
+            if (isCleanedUp) return;
+            isCleanedUp = true;
+
+            busRouteTool.removeArrows(true);
             const dsClose = MainApplication.getLayerManager().getEditDataSet();
             const safeRemove = function(ds, listener) {
                 if (!ds || !listener) return;
                 try { ds.removeSelectionListener(listener); } catch(e) {}
             };
-            safeRemove(dsClose, this.selecaoListener);
-            this.selecaoListener = null;
-            safeRemove(dsClose, this.selectionChangeListener);
-            this.selectionChangeListener = null;
-            this.selecaoTravada = false;
-            this.dialog = null;
+            safeRemove(dsClose, busRouteTool.selecaoListener);
+            busRouteTool.selecaoListener = null;
+            safeRemove(dsClose, busRouteTool.selectionChangeListener);
+            busRouteTool.selectionChangeListener = null;
+            busRouteTool.selecaoTravada = false;
+
+            if (dialogRef) {
+                try {
+                    const listeners = dialogRef.getWindowListeners();
+                    for (let i = 0; i < listeners.length; i++) {
+                        dialogRef.removeWindowListener(listeners[i]);
+                    }
+                } catch(e) {}
+                try { dialogRef.dispose(); } catch(e) {}
+            }
+            busRouteTool.dialog = null;
+        };
+
+        if (typeof __josmContextResetHooks__ !== 'undefined') {
+            __josmContextResetHooks__.register(cleanup);
+        }
+        if (typeof josmContextResetHooks !== 'undefined') {
+            josmContextResetHooks.register(cleanup);
+        }
+
+        if (globalThis.__scriptCleanup__) {
+            try { globalThis.__scriptCleanup__(); } catch(e) {}
+        }
+        if (globalThis.scriptCleanup) {
+            try { globalThis.scriptCleanup(); } catch(e) {}
+        }
+        globalThis.__scriptCleanup__ = cleanup;
+        globalThis.scriptCleanup = cleanup;
+
+        this.dialog.addWindowListener(new WindowAdapter({ windowClosing: (e) => {
+            cleanup();
         }}));
 
         // DataSelectionListener: atualiza o label de status quando a seleção muda

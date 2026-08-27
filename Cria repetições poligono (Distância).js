@@ -18,6 +18,7 @@ const {
 } = typeof javax !== 'undefined' ? javax.swing : {};
 const { GridBagLayout, GridBagConstraints, Insets, BorderLayout, Dimension } = typeof java !== 'undefined' ? java.awt : {};
 const ArrayList = Java.type("java.util.ArrayList");
+const WindowAdapter = Java.extend(Java.type("java.awt.event.WindowAdapter"));
 
 // --- ESTADO GLOBAL ---
 var state = {
@@ -215,6 +216,39 @@ function executar_criacao(modo, off_p, off_a, rep_p, rep_a, sobrepor_mesmo_lado)
 // --- INTERFACE ---
 function mostrar_ui() {
     const dialog = new JDialog(MainApplication.getMainFrame(), "Cópia Dinâmica Unificada", false);
+
+    let isCleanedUp = false;
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            try { dialog.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
     const main_panel = new JPanel(new GridBagLayout());
     const c = new GridBagConstraints();
     c.insets = new Insets(5, 5, 5, 5);
@@ -368,14 +402,20 @@ function mostrar_ui() {
             new Notification(state.total_criado + " cópia(s) criada(s) com sucesso.")
                 .setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
         }
-        dialog.dispose();
+        cleanup();
     });
     
     btn_can.addActionListener(function() {
         if (state.ultimo_cmd) UndoRedoHandler.getInstance().undo();
         new Notification("Operação cancelada.").setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
-        dialog.dispose();
+        cleanup();
     });
+
+    dialog.addWindowListener(new WindowAdapter({
+        windowClosing: function() {
+            cleanup();
+        }
+    }));
 
     dialog.add(main_panel, BorderLayout.CENTER);
     dialog.add(bp, BorderLayout.SOUTH);

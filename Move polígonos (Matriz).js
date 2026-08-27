@@ -287,7 +287,7 @@ function confirmarNoHistorico() {
                 restaurarOriginais();
                 new Notification("Ajuste de grade cancelado.")
                     .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
-                dialog.dispose();
+                cleanup();
                 return true; // consome o evento — impede o JOSM de processar seu próprio Ctrl+Z
             }
             return false;
@@ -295,25 +295,59 @@ function confirmarNoHistorico() {
     });
     KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(ctrlZDispatcher);
 
+    let isCleanedUp = false;
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        try {
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(ctrlZDispatcher);
+        } catch(e) {}
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            try { dialog.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
     btnOk.addActionListener(new ActionListener({ actionPerformed: function() {
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(ctrlZDispatcher);
         confirmarNoHistorico();
         new Notification("Grade finalizada com sucesso.")
             .setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
-        dialog.dispose();
+        cleanup();
     }}));
 
     btnCan.addActionListener(new ActionListener({ actionPerformed: function() {
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(ctrlZDispatcher);
         restaurarOriginais();
         new Notification("Ajuste de grade cancelado.")
             .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
-        dialog.dispose();
+        cleanup();
     }}));
 
     dialog.addWindowListener(new WindowAdapter({ windowClosing: function() {
-        KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(ctrlZDispatcher);
         restaurarOriginais();
+        cleanup();
     }}));
 
     footer.add(btnOk);

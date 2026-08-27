@@ -475,6 +475,13 @@ globalThis.busRouteTool = {
     showWindow: function() {
         if (this.dialog && this.dialog.isVisible()) return;
 
+        if (globalThis.__scriptCleanup__) {
+            try { globalThis.__scriptCleanup__(); } catch(e) {}
+        }
+        if (globalThis.scriptCleanup) {
+            try { globalThis.scriptCleanup(); } catch(e) {}
+        }
+
         const GridLayout   = Java.type("java.awt.GridLayout");
         const FlowLayout   = Java.type("java.awt.FlowLayout");
         const RelationEditor = Java.type("org.openstreetmap.josm.gui.dialogs.relation.RelationEditor");
@@ -756,12 +763,6 @@ globalThis.busRouteTool = {
             josmContextResetHooks.register(cleanup);
         }
 
-        if (globalThis.__scriptCleanup__) {
-            try { globalThis.__scriptCleanup__(); } catch(e) {}
-        }
-        if (globalThis.scriptCleanup) {
-            try { globalThis.scriptCleanup(); } catch(e) {}
-        }
         globalThis.__scriptCleanup__ = cleanup;
         globalThis.scriptCleanup = cleanup;
 

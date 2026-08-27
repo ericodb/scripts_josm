@@ -329,11 +329,17 @@ function mostrarDialogo() {
 
     // ── Cleanup
     let isCleanedUp = false;
+    let windowAdapter = null;
 
     const cleanup = function() {
         if (isCleanedUp) return;
         isCleanedUp = true;
-        MainApplication.getLayerManager().removeLayerChangeListener(layerListener);
+        if (layerListener) {
+            try { MainApplication.getLayerManager().removeLayerChangeListener(layerListener); } catch(e) {}
+        }
+        if (windowAdapter) {
+            try { dialog.removeWindowListener(windowAdapter); } catch(e) {}
+        }
         dialog.dispose();
     };
 
@@ -400,11 +406,12 @@ function mostrarDialogo() {
         }
     }));
 
-    dialog.addWindowListener(new WindowAdapter({
+    windowAdapter = new WindowAdapter({
         windowClosing: function() {
             cleanup();
         }
-    }));
+    });
+    dialog.addWindowListener(windowAdapter);
 
     atualizar_status();
     dialog.setVisible(true);

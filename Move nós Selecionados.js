@@ -39,6 +39,41 @@ const GeneralPath     = Java.type("java.awt.geom.GeneralPath");
         return;
     }
 
+    let dialog = null;
+    let isCleanedUp = false;
+
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            try { dialog.dispose(); } catch(e) {}
+            dialog = null;
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
     const initialPositions = new Map();
     let movimentosAcumulados = 0;
     let anguloAtualRad = 0.0;
@@ -291,7 +326,7 @@ const GeneralPath     = Java.type("java.awt.geom.GeneralPath");
     }));
 
     // Interface
-    const dialog = new JDialog(MainApplication.getMainFrame(), "Mover Nós Selecionados", false);
+    dialog = new JDialog(MainApplication.getMainFrame(), "Mover Nós Selecionados", false);
     const mainPanel = new JPanel();
     mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
     mainPanel.setBorder(BorderFactory.createEmptyBorder(8, 8, 4, 8));
@@ -322,7 +357,7 @@ const GeneralPath     = Java.type("java.awt.geom.GeneralPath");
                 if (recalcularAnguloSelecao()) mainPanel.repaint();
             });
         },
-        windowClosed: function(e) {}, windowClosing: function(e) {},
+        windowClosed: function(e) { cleanup(); }, windowClosing: function(e) { cleanup(); },
         windowDeactivated: function(e) {}, windowIconified: function(e) {},
         windowDeiconified: function(e) {}, windowOpened: function(e) {}
     }));
@@ -344,7 +379,7 @@ const GeneralPath     = Java.type("java.awt.geom.GeneralPath");
             : "Nenhuma alteração realizada."
         ).setIcon(UIManager.getIcon(movimentosAcumulados > 0
             ? "OptionPane.informationIcon" : "OptionPane.warningIcon")).show();
-        dialog.dispose();
+        cleanup();
     });
 
     btnCc.addActionListener(function() {
@@ -356,7 +391,7 @@ const GeneralPath     = Java.type("java.awt.geom.GeneralPath");
             new Notification("Operação cancelada.")
                 .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
         }
-        dialog.dispose();
+        cleanup();
     });
 
     footer.add(btnOk);

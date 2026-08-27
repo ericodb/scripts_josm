@@ -465,6 +465,8 @@ function mostrarDialogo(poly) {
         if (isCleanedUp) return;
         isCleanedUp = true;
 
+        desfazer_preview();
+
         if (layerListener) {
             try { MainApplication.getLayerManager().removeLayerChangeListener(layerListener); } catch(e) {}
         }
@@ -518,15 +520,10 @@ function mostrarDialogo(poly) {
 
     // Listeners
     btn_ok.addActionListener(new ActionListener({ actionPerformed: function() {
+        const pts  = gerar_pontos_arredondados();
+
         cleanup();
 
-        // Transfere ID da way original para a geometria arredondada:
-        if (state.previewCriado) {
-            UndoRedoHandler.getInstance().undo();
-            state.previewCriado = false;
-        }
-
-        const pts  = gerar_pontos_arredondados();
         const cmds = new ArrayList();
         const nodes_list = new ArrayList();
         
@@ -571,14 +568,12 @@ function mostrarDialogo(poly) {
 
     btn_can.addActionListener(new ActionListener({ actionPerformed: function() {
         cleanup();
-        desfazer_preview();
         new Notification("Operação cancelada.")
             .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
     }}));
 
     windowAdapter = new WindowAdapter({ windowClosing: function() {
         cleanup();
-        desfazer_preview();
     }});
     dialog.addWindowListener(windowAdapter);
 

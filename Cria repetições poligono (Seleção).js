@@ -1,7 +1,5 @@
 "use strict";
 
-import { addResetCallback } from 'josm/context';
-
 // Imports Java
 const MainApplication        = Java.type("org.openstreetmap.josm.gui.MainApplication");
 const Notification            = Java.type("org.openstreetmap.josm.gui.Notification");
@@ -34,7 +32,57 @@ const ArrayList      = Java.type("java.util.ArrayList");
 const SwingUtilities  = Java.type("javax.swing.SwingUtilities");
 const WindowAdapter   = Java.extend(Java.type("java.awt.event.WindowAdapter"));
 
-// LayerChangeListener criado no topo
+// Estado global da sessão
+let dialog         = null;   // JDialog não-modal
+let sourceDs       = null;   // DataSet da camada na abertura
+let totalAplicados = 0;      // total de polígonos criados na sessão
+let totalComandos  = 0;      // total de SequenceCommands (1 por Aplicar) para undo
+let layerListener  = null;
+let isCleanedUp    = false;
+
+// Limpeza de listeners e diálogo
+const cleanup = function() {
+    if (isCleanedUp) return;
+    isCleanedUp = true;
+
+    if (layerListener !== null) {
+        try { MainApplication.getLayerManager().removeLayerChangeListener(layerListener); }
+        catch (e) {}
+        layerListener = null;
+    }
+    sourceDs       = null;
+    totalAplicados = 0;
+    totalComandos  = 0;
+
+    if (dialog !== null) {
+        try {
+            const listeners = dialog.getWindowListeners();
+            for (let i = 0; i < listeners.length; i++) {
+                dialog.removeWindowListener(listeners[i]);
+            }
+        } catch (e) {}
+        try { dialog.dispose(); } catch (e) {}
+        dialog = null;
+    }
+};
+
+if (typeof __josmContextResetHooks__ !== 'undefined') {
+    __josmContextResetHooks__.register(cleanup);
+}
+if (typeof josmContextResetHooks !== 'undefined') {
+    josmContextResetHooks.register(cleanup);
+}
+
+if (globalThis.__scriptCleanup__) {
+    try { globalThis.__scriptCleanup__(); } catch(e) {}
+}
+if (globalThis.scriptCleanup) {
+    try { globalThis.scriptCleanup(); } catch(e) {}
+}
+globalThis.__scriptCleanup__ = cleanup;
+globalThis.scriptCleanup = cleanup;
+
+// LayerChangeListener
 const LayerChangeListener = Java.extend(
     Java.type("org.openstreetmap.josm.gui.layer.LayerManager$LayerChangeListener"), {
         layerAdded:        function (_e) {},
@@ -45,8 +93,7 @@ const LayerChangeListener = Java.extend(
                 const removed = e.getRemovedLayer();
                 if (removed && removed.data && removed.data === sourceDs) {
                     SwingUtilities.invokeLater(function () {
-                        if (dialog !== null) { dialog.dispose(); dialog = null; }
-                        clean_up();
+                        cleanup();
                         new Notification("Camada removida. Diálogo fechado.")
                             .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
                     });
@@ -55,25 +102,6 @@ const LayerChangeListener = Java.extend(
         }
     }
 );
-let layerListener = null;
-
-// Estado global da sessão
-let dialog         = null;   // JDialog não-modal
-let sourceDs       = null;   // DataSet da camada na abertura
-let totalAplicados = 0;      // total de polígonos criados na sessão
-let totalComandos  = 0;      // total de SequenceCommands (1 por Aplicar) para undo
-
-// Limpeza de listeners
-function clean_up() {
-    if (layerListener !== null) {
-        try { MainApplication.getLayerManager().removeLayerChangeListener(layerListener); }
-        catch (e) {}
-        layerListener = null;
-    }
-    sourceDs       = null;
-    totalAplicados = 0;
-    totalComandos  = 0;
-}
 
 // Lógica de cópia
 // Retorna o número de polígonos criados, ou 0 em caso de erro/cancelamento.
@@ -245,9 +273,7 @@ function copyPolygons() {
     // OK: fecha e notifica o total já aplicado
     btnOk.addActionListener(function (_e) {
         const total = totalAplicados;
-        dialog.dispose();
-        dialog = null;
-        clean_up();
+        cleanup();
 
         if (total > 0) {
             new Notification(total + " polígono(s) copiado(s) no total.")
@@ -262,9 +288,7 @@ function copyPolygons() {
     btnCan.addActionListener(function (_e) {
         const total = totalAplicados;
         const cmds  = totalComandos;
-        dialog.dispose();
-        dialog = null;
-        clean_up();
+        cleanup();
 
         if (cmds > 0) {
             // 1 SequenceCommand por Aplicar — desfaz cada um
@@ -279,8 +303,10 @@ function copyPolygons() {
     // Fechar via X: limpa estado mas sem desfazer
     dialog.addWindowListener(new WindowAdapter({
         windowClosed: function() {
-            dialog = null;
-            clean_up();
+            cleanup();
+        },
+        windowClosing: function() {
+            cleanup();
         }
     }));
 
@@ -290,11 +316,5 @@ function copyPolygons() {
     dialog.setLocationRelativeTo(MainApplication.getMainFrame());
     dialog.setVisible(true);
 }
-
-// Reset Context: fecha diálogo e limpa estado quando o plugin faz reset
-addResetCallback(function () {
-    if (dialog !== null) { dialog.dispose(); dialog = null; }
-    clean_up();
-});
 
 copyPolygons();

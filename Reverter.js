@@ -543,16 +543,51 @@ function iniciarScript() {
  
     ChangesetCache.getInstance().addChangesetCacheListener(changesetCacheListener); 
     MainApplication.getLayerManager().addLayerChangeListener(layerHandler); 
- 
+
+    let isCleanedUp = false;
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        try { if (monitorTimer) monitorTimer.stop(); } catch(e) {}
+        try { ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener); } catch(e) {}
+        try { MainApplication.getLayerManager().removeLayerChangeListener(layerHandler); } catch(e) {}
+        try {
+            const ds = MainApplication.getLayerManager().getEditDataSet();
+            if (ds) ds.addChangeSetTag("revert:id", null);
+        } catch(e) {}
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            try { dialog.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
     dialog.addWindowListener(new (Java.extend(WindowAdapter, { windowClosing: function() { 
-        monitorTimer.stop(); 
-        ChangesetCache.getInstance().removeChangesetCacheListener(changesetCacheListener); 
-        MainApplication.getLayerManager().removeLayerChangeListener(layerHandler); 
-        const ds = MainApplication.getLayerManager().getEditDataSet(); 
-        if (ds) ds.addChangeSetTag("revert:id", null); 
-        dialog.dispose(); 
+        cleanup();
     }}))()); 
- 
+
     updateUI(); 
     dialog.pack(); 
     dialog.setLocationRelativeTo(parent); 

@@ -27,6 +27,7 @@ const FlowLayout      = Java.type("java.awt.FlowLayout");
 const ArrayList       = Java.type("java.util.ArrayList");
 const JOptionPane     = Java.type("javax.swing.JOptionPane");
 const ImageProvider   = Java.type("org.openstreetmap.josm.tools.ImageProvider");
+const WindowAdapter   = Java.extend(Java.type("java.awt.event.WindowAdapter"));
 
 // --- FUNÇÕES AUXILIARES ---
 
@@ -287,6 +288,41 @@ function extrusao_precisa() {
         return true;
     }
 
+    // ── CLEANUP E HOOKS
+
+    let isCleanedUp = false;
+
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            try { dialog.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
     // ── LISTENERS
 
     // Aplicar: executa sem fechar
@@ -296,7 +332,7 @@ function extrusao_precisa() {
 
     // OK: apenas fecha e notifica
     btn_ok.addActionListener(function(_e) {
-        dialog.dispose();
+        cleanup();
         if (total_extrusoes > 0) {
             new Notification("Extrusão concluída. Total aplicado: " + total_extrusoes + "×")
                 .setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
@@ -308,7 +344,7 @@ function extrusao_precisa() {
 
     // Cancelar: desfaz todas as extrusões da sessão e fecha
     btn_can.addActionListener(function(_e) {
-        dialog.dispose();
+        cleanup();
         if (total_extrusoes > 0) {
             for (let i = 0; i < total_extrusoes; i++) UndoRedoHandler.getInstance().undo();
             layer.invalidate();
@@ -316,6 +352,12 @@ function extrusao_precisa() {
         new Notification("Operação cancelada. " + total_extrusoes + " extrusão(ões) desfeita(s).")
             .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
     });
+
+    dialog.addWindowListener(new WindowAdapter({
+        windowClosing: function(_e) {
+            cleanup();
+        }
+    }));
 
     dialog.setVisible(true);
 }

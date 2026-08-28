@@ -1,6 +1,11 @@
 "use strict";
 
-import { addResetCallback } from 'josm/context';
+if (globalThis.__scriptCleanup__) {
+    try { globalThis.__scriptCleanup__(); } catch(e) {}
+}
+if (globalThis.scriptCleanup) {
+    try { globalThis.scriptCleanup(); } catch(e) {}
+}
 
 const MainApplication = Java.type("org.openstreetmap.josm.gui.MainApplication");
 const Notification    = Java.type("org.openstreetmap.josm.gui.Notification");
@@ -30,11 +35,14 @@ const GridLayout     = Java.type("java.awt.GridLayout");
 const ArrayList      = Java.type("java.util.ArrayList");
 const SwingConstants = Java.type("javax.swing.SwingConstants");
 const SwingUtilities = Java.type("javax.swing.SwingUtilities");
+const WindowAdapter  = Java.extend(Java.type("java.awt.event.WindowAdapter"));
 
 // --- Estado global do diálogo ---
 var _activeDialog     = null;  // instância JDialog ativa
 var _sourceDs         = null;  // DataSet da camada ao abrir
 var _layerListener    = null;  // listener de remoção de camada
+var windowAdapter     = null;  // listener de janela
+var isCleanedUp       = false;
 
 // --- LayerChangeListener no escopo global (padrão GraalVM) ---
 const LayerChangeListener = Java.extend(
@@ -46,7 +54,7 @@ const LayerChangeListener = Java.extend(
                 var removed = e.getRemovedLayer();
                 if (removed && removed.data && removed.data === _sourceDs) {
                     SwingUtilities.invokeLater(function () {
-                        cleanUp();
+                        cleanup();
                         new Notification("Camada removida. Diálogo fechado.")
                             .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
                     });
@@ -56,18 +64,48 @@ const LayerChangeListener = Java.extend(
     }
 );
 
-function cleanUp() {
-    if (_activeDialog !== null) {
-        try { _activeDialog.dispose(); } catch (e) {}
-        _activeDialog = null;
-    }
+const cleanup = function() {
+    if (isCleanedUp) return;
+    isCleanedUp = true;
+
     if (_layerListener !== null) {
         try { MainApplication.getLayerManager().removeLayerChangeListener(_layerListener); }
         catch (e) {}
         _layerListener = null;
     }
     _sourceDs = null;
+
+    if (_activeDialog !== null) {
+        try {
+            var listeners = _activeDialog.getWindowListeners();
+            for (var i = 0; i < listeners.length; i++) {
+                _activeDialog.removeWindowListener(listeners[i]);
+            }
+        } catch (e) {}
+        if (windowAdapter !== null) {
+            try { _activeDialog.removeWindowListener(windowAdapter); } catch (e) {}
+            windowAdapter = null;
+        }
+        try { _activeDialog.dispose(); } catch (e) {}
+        _activeDialog = null;
+    }
+};
+
+if (typeof __josmContextResetHooks__ !== 'undefined') {
+    __josmContextResetHooks__.register(cleanup);
 }
+if (typeof josmContextResetHooks !== 'undefined') {
+    josmContextResetHooks.register(cleanup);
+}
+
+if (globalThis.__scriptCleanup__) {
+    try { globalThis.__scriptCleanup__(); } catch(e) {}
+}
+if (globalThis.scriptCleanup) {
+    try { globalThis.scriptCleanup(); } catch(e) {}
+}
+globalThis.__scriptCleanup__ = cleanup;
+globalThis.scriptCleanup = cleanup;
 
 // --- FUNÇÕES GEOMÉTRICAS ---
 
@@ -236,7 +274,7 @@ function TransformDialog(ways) {
     
     btnOk.addActionListener(function() {
         new Notification("Transformações finalizadas.").setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
-        cleanUp();
+        cleanup();
     });
     btnCancel.addActionListener(function() {
         while(self.history.length > 0) {
@@ -244,10 +282,20 @@ function TransformDialog(ways) {
             self.history.pop();
         }
         new Notification("Ações descartadas.").setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
-        cleanUp();
+        cleanup();
     });
     footP.add(btnOk); footP.add(btnCancel);
     mainPanel.add(footP);
+
+    windowAdapter = new WindowAdapter({
+        windowClosing: function (_e) {
+            SwingUtilities.invokeLater(function () {
+                cleanup();
+            });
+        },
+        windowClosed: function (_e) {}
+    });
+    dialog.addWindowListener(windowAdapter);
 
     dialog.add(mainPanel); dialog.pack();
     dialog.setLocationRelativeTo(MainApplication.getMainFrame());
@@ -387,8 +435,3 @@ if (!layer || !layer.data) {
             .setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
     }
 }
-
-// --- Reset Context ---
-addResetCallback(function () {
-    cleanUp();
-});

@@ -1,7 +1,5 @@
 "use strict";
 
-import { addResetCallback } from 'josm/context';
-
 const MainApplication  = Java.type("org.openstreetmap.josm.gui.MainApplication");
 const Notification     = Java.type("org.openstreetmap.josm.gui.Notification");
 const Way              = Java.type("org.openstreetmap.josm.data.osm.Way");
@@ -28,6 +26,7 @@ const BorderFactory    = Java.type("javax.swing.BorderFactory");
 const FlowLayout       = Java.type("java.awt.FlowLayout");
 const Box              = Java.type("javax.swing.Box");
 const ActionListener   = Java.extend(Java.type("java.awt.event.ActionListener"));
+const WindowAdapter    = Java.extend(Java.type("java.awt.event.WindowAdapter"));
 
 (function () {
     let totalPoligonosCortados = 0;
@@ -398,9 +397,47 @@ const ActionListener   = Java.extend(Java.type("java.awt.event.ActionListener"))
         }
     }));
 
+    let isCleanedUp = false;
+    let windowAdapter = null;
+
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            if (windowAdapter) {
+                try { dialog.removeWindowListener(windowAdapter); } catch(e) {}
+                windowAdapter = null;
+            }
+            try { dialog.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
     btnOk.addActionListener(new ActionListener({
         actionPerformed: function() {
-            dialog.dispose();
+            cleanup();
             if (totalPoligonosCortados > 0) {
                 new Notification("Sessão finalizada.\nTotal de " + totalPoligonosCortados + " polígono(s) processado(s) com sucesso!")
                     .setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
@@ -413,16 +450,21 @@ const ActionListener   = Java.extend(Java.type("java.awt.event.ActionListener"))
 
     btnCan.addActionListener(new ActionListener({
         actionPerformed: function() {
-            dialog.dispose();
+            cleanup();
         }
     }));
+
+    windowAdapter = new WindowAdapter({
+        windowClosing: function() {
+            cleanup();
+        }
+    });
+    dialog.addWindowListener(windowAdapter);
 
     dialog.add(mainPanel);
     dialog.pack();
     dialog.setResizable(false);
     dialog.setLocationRelativeTo(MainApplication.getMainFrame());
-
-    addResetCallback(function() { dialog.dispose(); });
 
     dialog.setVisible(true);
 })();

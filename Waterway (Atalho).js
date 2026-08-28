@@ -1,6 +1,8 @@
 "use strict";
 
-import { addResetCallback } from 'josm/context';
+if (globalThis.scriptCleanup) {
+    try { globalThis.scriptCleanup(); } catch(e) {}
+}
 
 // --- Importações de API ---
 const MainApplication    = Java.type("org.openstreetmap.josm.gui.MainApplication");
@@ -55,7 +57,11 @@ const LayerChangeListener = Java.extend(
     }
 );
 
+let isCleanedUp = false;
 function culvertCleanUp() {
+    if (isCleanedUp) return;
+    isCleanedUp = true;
+
     if (globalThis.culvertToolState.dispatcher) {
         try {
             KeyboardFocusManager.getCurrentKeyboardFocusManager()
@@ -71,12 +77,27 @@ function culvertCleanUp() {
         globalThis.culvertToolState.layerListener = null;
     }
     if (globalThis.culvertToolState.dialog) {
+        try {
+            const listeners = globalThis.culvertToolState.dialog.getWindowListeners();
+            for (let i = 0; i < listeners.length; i++) {
+                globalThis.culvertToolState.dialog.removeWindowListener(listeners[i]);
+            }
+        } catch (e) {}
         try { globalThis.culvertToolState.dialog.dispose(); } catch (e) {}
         globalThis.culvertToolState.dialog = null;
     }
     globalThis.culvertToolState.shortcutEnabled = false;
     globalThis.culvertToolState.sourceDs = null;
 }
+
+if (typeof __josmContextResetHooks__ !== 'undefined') {
+    __josmContextResetHooks__.register(culvertCleanUp);
+}
+if (typeof josmContextResetHooks !== 'undefined') {
+    josmContextResetHooks.register(culvertCleanUp);
+}
+globalThis.__scriptCleanup__ = culvertCleanUp;
+globalThis.scriptCleanup = culvertCleanUp;
 
 // --- Estado Global ---
 globalThis.culvertToolState = globalThis.culvertToolState || {
@@ -497,11 +518,6 @@ const CulvertDialog = {
         globalThis.culvertToolState.dialog = dialog;
     }
 };
-
-// --- Reset Context ---
-addResetCallback(function () {
-    try { culvertCleanUp(); } catch (e) {}
-});
 
 // --- Início ---
 CulvertDialog.show();

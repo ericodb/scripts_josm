@@ -1,6 +1,6 @@
 "use strict";
 
-// ── IMPORTS ───────────────────────────────────────────────────────────────────
+// IMPORTS
 const MainApplication = Java.type("org.openstreetmap.josm.gui.MainApplication");
 const Notification    = Java.type("org.openstreetmap.josm.gui.Notification");
 const UIManager       = Java.type("javax.swing.UIManager");
@@ -39,8 +39,7 @@ const WindowAdapter   = Java.type("java.awt.event.WindowAdapter");
 const ActionListener  = Java.extend(Java.type("java.awt.event.ActionListener"));
 const DocumentListener = Java.extend(Java.type("javax.swing.event.DocumentListener"));
 
-// ── UTILITÁRIOS ──
-
+// UTILITÁRIOS
 function jStr(s) { return new (Java.type("java.lang.String"))(String(s)); }
 
 function novoClient() {
@@ -61,8 +60,7 @@ function aoTerminar(future, callback) {
     t.start();
 }
 
-// ── LÓGICA DE DOWNLOAD ──
-
+// LÓGICA DE DOWNLOAD
 function baixarGPX(gpxId, resetUI) {
     const url = "https://www.openstreetmap.org/traces/" + gpxId + "/data";
     const request = HttpRequest.newBuilder().uri(URI.create(jStr(url))).header("User-Agent", "JOSM-Script/1.0").GET().build();
@@ -139,8 +137,7 @@ function baixarHistorico(objType, osmId, version, resetUI) {
     });
 }
 
-// ── INTERFACE ──
-
+// INTERFACE
 SwingUtilities.invokeLater(function() {
     const dialog = new JDialog(MainApplication.getMainFrame(), "Ferramentas de Download", false);
     const outer  = new JPanel(); outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));

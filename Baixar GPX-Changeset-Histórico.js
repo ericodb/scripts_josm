@@ -1,8 +1,6 @@
 "use strict";
 
-import { addResetCallback } from 'josm/context';
-
-// ── IMPORTS ───────────────────────────────────────────────────────────────────
+// IMPORTS
 const MainApplication = Java.type("org.openstreetmap.josm.gui.MainApplication");
 const Notification    = Java.type("org.openstreetmap.josm.gui.Notification");
 const UIManager       = Java.type("javax.swing.UIManager");
@@ -37,11 +35,11 @@ const BodyHandlers    = Java.type("java.net.http.HttpResponse$BodyHandlers");
 const URI             = Java.type("java.net.URI");
 const Duration        = Java.type("java.time.Duration");
 
+const WindowAdapter   = Java.type("java.awt.event.WindowAdapter");
 const ActionListener  = Java.extend(Java.type("java.awt.event.ActionListener"));
 const DocumentListener = Java.extend(Java.type("javax.swing.event.DocumentListener"));
 
-// ── UTILITÁRIOS ──
-
+// UTILITÁRIOS
 function jStr(s) { return new (Java.type("java.lang.String"))(String(s)); }
 
 function novoClient() {
@@ -62,8 +60,7 @@ function aoTerminar(future, callback) {
     t.start();
 }
 
-// ── LÓGICA DE DOWNLOAD ──
-
+// LÓGICA DE DOWNLOAD
 function baixarGPX(gpxId, resetUI) {
     const url = "https://www.openstreetmap.org/traces/" + gpxId + "/data";
     const request = HttpRequest.newBuilder().uri(URI.create(jStr(url))).header("User-Agent", "JOSM-Script/1.0").GET().build();
@@ -140,8 +137,7 @@ function baixarHistorico(objType, osmId, version, resetUI) {
     });
 }
 
-// ── INTERFACE ──
-
+// INTERFACE
 SwingUtilities.invokeLater(function() {
     const dialog = new JDialog(MainApplication.getMainFrame(), "Ferramentas de Download", false);
     const outer  = new JPanel(); outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
@@ -226,8 +222,44 @@ SwingUtilities.invokeLater(function() {
     }}));
     const p3 = new JPanel(); p3.add(btnHist); secHist.add(p3);
 
+    let isCleanedUp = false;
+    const cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        if (dialog) {
+            try {
+                const listeners = dialog.getWindowListeners();
+                for (let i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            try { dialog.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
+    dialog.addWindowListener(new (Java.extend(WindowAdapter, {
+        windowClosing: function() { cleanup(); }
+    }))());
+
     const btnFechar = new JButton("Fechar", UIManager.getIcon("OptionPane.noIcon"));
-    btnFechar.addActionListener(new ActionListener({ actionPerformed: () => dialog.dispose() }));
+    btnFechar.addActionListener(new ActionListener({ actionPerformed: () => cleanup() }));
     const pF = new JPanel(); pF.add(btnFechar);
 
     outer.add(secGpx); outer.add(Box.createVerticalStrut(5));
@@ -236,6 +268,5 @@ SwingUtilities.invokeLater(function() {
     outer.add(pF);
     
     dialog.add(outer); dialog.pack(); dialog.setLocationRelativeTo(MainApplication.getMainFrame());
-    addResetCallback(() => dialog.dispose());
     dialog.setVisible(true);
 });

@@ -18,6 +18,7 @@ const JButton         = Java.type("javax.swing.JButton");
 const BoxLayout       = Java.type("javax.swing.BoxLayout");
 const Box             = Java.type("javax.swing.Box");
 const UIManager       = Java.type("javax.swing.UIManager");
+const SwingUtilities  = Java.type("javax.swing.SwingUtilities");
 const JRadioButton    = Java.type("javax.swing.JRadioButton");
 const ButtonGroup     = Java.type("javax.swing.ButtonGroup");
 const BorderFactory   = Java.type("javax.swing.BorderFactory");
@@ -29,6 +30,14 @@ const FlowLayout      = Java.type("java.awt.FlowLayout");
 const BorderLayout    = Java.type("java.awt.BorderLayout");
 const ArrayList       = Java.type("java.util.ArrayList");
 const Color           = Java.type("java.awt.Color");
+
+// FAXINA PRÉVIA DE INSTÂNCIAS ANTERIORES
+if (globalThis.__scriptCleanup__) {
+    try { globalThis.__scriptCleanup__(); } catch(e) {}
+}
+if (globalThis.scriptCleanup) {
+    try { globalThis.scriptCleanup(); } catch(e) {}
+}
 
 // ESTADO GLOBAL
 var state = {
@@ -495,17 +504,9 @@ function main() {
 
     var pFinal = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 10));
 
-    var btnOk = new JButton("Confirmar");
-    btnOk.setIcon(UIManager.getIcon("OptionPane.okIcon"));
-    btnOk.addActionListener(new ActionListener({
-        actionPerformed: function() {
-            new Notification("Polígono criado com sucesso.").setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
-            dialog.dispose();
-        }
-    }));
-
-    var btnCancel = new JButton("Cancelar");
-    btnCancel.setIcon(UIManager.getIcon("OptionPane.noIcon"));
+    var isCleanedUp = false;
+    var confirmed = false;
+    var windowAdapter = null;
 
     var cancelar = function() {
         if (state.previewCmd) {
@@ -519,16 +520,72 @@ function main() {
         new Notification("Cancelado.").setIcon(UIManager.getIcon("OptionPane.warningIcon")).show();
     };
 
-    btnCancel.addActionListener(new ActionListener({
-        actionPerformed: function() {
+    var cleanup = function() {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+
+        if (!confirmed) {
             cancelar();
-            dialog.dispose();
+        }
+
+        if (dialog) {
+            try {
+                var listeners = dialog.getWindowListeners();
+                for (var i = 0; i < listeners.length; i++) {
+                    dialog.removeWindowListener(listeners[i]);
+                }
+            } catch(e) {}
+            if (windowAdapter) {
+                try { dialog.removeWindowListener(windowAdapter); } catch(e) {}
+                windowAdapter = null;
+            }
+            try { dialog.dispose(); } catch(e) {}
+        }
+    };
+
+    if (typeof __josmContextResetHooks__ !== 'undefined') {
+        __josmContextResetHooks__.register(cleanup);
+    }
+    if (typeof josmContextResetHooks !== 'undefined') {
+        josmContextResetHooks.register(cleanup);
+    }
+
+    if (globalThis.__scriptCleanup__) {
+        try { globalThis.__scriptCleanup__(); } catch(e) {}
+    }
+    if (globalThis.scriptCleanup) {
+        try { globalThis.scriptCleanup(); } catch(e) {}
+    }
+    globalThis.__scriptCleanup__ = cleanup;
+    globalThis.scriptCleanup = cleanup;
+
+    var btnOk = new JButton("Confirmar");
+    btnOk.setIcon(UIManager.getIcon("OptionPane.okIcon"));
+    btnOk.addActionListener(new ActionListener({
+        actionPerformed: function() {
+            confirmed = true;
+            new Notification("Polígono criado com sucesso.").setIcon(UIManager.getIcon("OptionPane.informationIcon")).show();
+            cleanup();
         }
     }));
 
-    dialog.addWindowListener(new WindowAdapter({
-        windowClosing: function() { cancelar(); }
+    var btnCancel = new JButton("Cancelar");
+    btnCancel.setIcon(UIManager.getIcon("OptionPane.noIcon"));
+    btnCancel.addActionListener(new ActionListener({
+        actionPerformed: function() {
+            cleanup();
+        }
     }));
+
+    windowAdapter = new WindowAdapter({
+        windowClosing: function(_e) {
+            SwingUtilities.invokeLater(function() {
+                cleanup();
+            });
+        },
+        windowClosed: function(_e) {}
+    });
+    dialog.addWindowListener(windowAdapter);
 
     pFinal.add(btnOk);
     pFinal.add(btnCancel);
